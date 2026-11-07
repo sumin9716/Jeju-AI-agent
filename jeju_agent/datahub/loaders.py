@@ -242,6 +242,24 @@ def _coverage_notes(df: pd.DataFrame, spec: DatasetSpec, params: dict) -> list[s
     return notes
 
 
+@dataclass
+class RangeFetch:
+    """기간형 API 수집 결과. 하루씩 나눠 받았으면 날짜별 점검 결과도 담는다."""
+
+    df: pd.DataFrame
+    total: int | None
+    pages: int
+    from_cache: bool
+    url: str
+    truncated: bool = False
+    chunked: bool = False
+    days: int = 0
+    cached_days: int = 0
+    empty_days: list = field(default_factory=list)
+    short_days: list = field(default_factory=list)  # (날짜, 받은 건수, 허브 건수)
+    stopped_after: date | None = None
+
+
 # Open API 를 쓸 수 없는 이유 → 모델과 사용자에게 보여 줄 짧은 이름과 안내
 API_UNAVAILABLE_LABELS = {
     "no_api_id": "API 고유 ID 미등록",
@@ -419,7 +437,7 @@ class DataStore:
         today = self.today()
         merged = render_params({**(spec.api_params or {}), **(params or {})}, today=today)
         client = self.client.for_paging(spec.api_paging)
-        res = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+        res = self._fetch_range(spec, client, merged, refresh, max_rows)
         pre_notes: list[str] = []
         if res.df.empty and len(spec.date_params) >= 2:
             latest = self.latest_date(spec, merged, client=client)
@@ -430,7 +448,7 @@ class DataStore:
                     s_key, e_key = spec.date_params[:2]
                     start = latest - timedelta(days=13)
                     merged = {**merged, s_key: start.strftime("%Y%m%d"), e_key: latest.strftime("%Y%m%d")}
-                    res = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+                    res = self._fetch_range(spec, client, merged, refresh, max_rows)
                     pre_notes.append(
                         f"기본 기간에 데이터가 없어 가장 최근 2주({start.isoformat()} ~ {latest.isoformat()})로 다시 불러왔습니다."
                     )
@@ -438,7 +456,27 @@ class DataStore:
                 pre_notes.append("최근 16년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
         df = normalize_dataframe(res.df, spec)
         shown = merged
-        notes = pre_notes + [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {res.total if res.total is not None else '알 수 없음'}건"]
+        total_txt = f"{res.total:,}" if res.total is not None else "알 수 없음"
+        if res.chunked:
+            notes = pre_notes + [
+                f"하루씩 {res.days}일을 나눠 불러왔습니다: API 호출 {res.pages}페이지(캐시 {res.cached_days}일), "
+                f"수집 {len(df):,}건 / 허브 전체 {total_txt}건"
+            ]
+            if res.empty_days and len(res.empty_days) < res.days:
+                listed = ", ".join(d.isoformat() for d in res.empty_days[:10]) + (" …" if len(res.empty_days) > 10 else "")
+                notes.append(
+                    f"⚠️ 허브에 자료가 없는 날 {len(res.empty_days)}일: {listed} (날짜마다 따로 조회해 0건을 확인함). "
+                    "이 날들은 빼고 분석하고 답변에 밝히세요."
+                )
+            if res.short_days:
+                listed = ", ".join(f"{d.isoformat()}({got:,}/{tot:,})" for d, got, tot in res.short_days[:5])
+                notes.append(f"⚠️ 받은 건수가 허브 건수보다 적은 날: {listed}. 다시 불러오면(refresh) 채워질 수 있습니다.")
+            if res.stopped_after:
+                notes.append(
+                    f"⚠️ 한 번에 받는 한도에 닿아 {res.stopped_after.isoformat()}까지만 받았습니다. 기간을 나누거나 거르기 변수를 쓰세요."
+                )
+        else:
+            notes = pre_notes + [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {total_txt}건"]
         if res.from_cache:
             notes.append("디스크 캐시에서 읽음 (refresh=True 로 새로 수집 가능)")
         if shown:
@@ -447,7 +485,7 @@ class DataStore:
             notes.append("⚠️ 이 조건에 해당하는 데이터가 0건입니다. 기간을 앞당기거나 넓혀 다시 요청하세요.")
         else:
             notes.extend(_coverage_notes(df, spec, merged))
-        if res.truncated:
+        if res.truncated and not res.chunked:
             notes.append(
                 f"⚠️ 전체 {res.total:,}건 중 {len(df):,}건만 수집했습니다(페이지 한도). 기간을 나눠 요청하세요."
             )
@@ -461,6 +499,52 @@ class DataStore:
             is_synthetic=False,
             spec=spec,
             notes=notes,
+        )
+
+    def _fetch_range(self, spec: DatasetSpec, client: DataHubClient, merged: dict, refresh: bool, max_rows: int | None) -> RangeFetch:
+        """기간형 API 수집. 하루 단위 날짜(YYYYMMDD) 기간이 이틀 이상이면 하루씩 나눠 받는다.
+
+        - 하루씩 받으면 날짜마다 허브 건수와 받은 건수를 대조해 '허브에 자료가 없는 날'과 '덜 받은 날'을 알 수 있고,
+          수백 쪽을 한 번에 넘기다 생길 수 있는 누락을 줄이며, 겹치는 기간을 다시 물을 때 날짜별 캐시를 그대로 쓴다.
+        - 전체 한도(max_rows, 없으면 쪽당 건수 × 최대 쪽수)에 닿으면 거기서 멈춘다.
+        """
+        dated = len(spec.date_params) >= 2 and (spec.date_format or "%Y%m%d") == "%Y%m%d"
+        if dated:
+            s_key, e_key = spec.date_params[:2]
+            start, end = _parse_ymd(merged.get(s_key)), _parse_ymd(merged.get(e_key))
+        if not dated or not start or not end or start >= end:
+            r = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+            return RangeFetch(df=r.df, total=r.total, pages=r.pages, from_cache=r.from_cache, url=r.url, truncated=r.truncated)
+        cap = max_rows or client.page_size * client.max_pages
+        frames, pages, cached, total, got = [], 0, 0, 0, 0
+        empty, short = [], []
+        url, stopped, truncated = "", None, False
+        d, days = start, 0
+        while d <= end:
+            day = d.strftime("%Y%m%d")
+            r = client.fetch(spec.api_id, {**merged, s_key: day, e_key: day}, refresh=refresh, max_rows=cap - got)
+            days += 1
+            pages += r.pages
+            cached += int(r.from_cache)
+            url = r.url
+            total += r.total or 0
+            got += len(r.df)
+            if r.df.empty:
+                empty.append(d)
+            else:
+                frames.append(r.df)
+                if r.total is not None and len(r.df) < r.total:
+                    short.append((d, len(r.df), r.total))
+            if r.truncated or got >= cap:
+                truncated, stopped = True, (d if d < end else None)
+                break
+            if not r.from_cache and client.sleep_between_pages:
+                time.sleep(client.sleep_between_pages)
+            d += timedelta(days=1)
+        df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+        return RangeFetch(
+            df=df, total=total, pages=pages, from_cache=cached == days, url=url, truncated=truncated, chunked=True,
+            days=days, cached_days=cached, empty_days=empty, short_days=short, stopped_after=stopped,
         )
 
     def _load_api_by_day(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
