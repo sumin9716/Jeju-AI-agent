@@ -6,7 +6,8 @@
   python -m jeju_agent.cli catalog search "버스"   # 데이터 목록 검색
   python -m jeju_agent.cli data status            # 데이터 출처 상태
   python -m jeju_agent.cli data load 753          # 데이터 불러오기 미리보기
-  python -m jeju_agent.cli data test-api floating_population_emd   # Open API 연결 점검
+  python -m jeju_agent.cli data test-api floating_population_emd   # Open API 연결 점검 (데이터셋 하나)
+  python -m jeju_agent.cli data check-api         # 등록 데이터셋 전체 Open API 일괄 점검 보고서
   python -m jeju_agent.cli scenario run scenarios/01_aewol_weekend.yaml   # 재현 시나리오 실행
   python -m jeju_agent.cli samples                # 합성 샘플 데이터 재생성
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import runpy
 import sys
 from datetime import datetime
@@ -46,7 +48,13 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             ok = False
             _print(f"- {mod}: ✖ 설치 필요 (pip install -r requirements.txt)")
     s = Settings()
-    _print(f"- ANTHROPIC_API_KEY: {'✔ 설정됨' if s.has_anthropic_key else '✖ 없음 (.env 에 입력)'}")
+    if s.has_anthropic_key:
+        key_state = "✔ 설정됨"
+    elif os.getenv("ANTHROPIC_API_KEY", "").strip():
+        key_state = "✖ 예시값이 그대로 있습니다 (.env 에 실제 키 입력)"
+    else:
+        key_state = "✖ 없음 (.env 에 입력)"
+    _print(f"- ANTHROPIC_API_KEY: {key_state}")
     _print(f"- 모델: {s.model} / 노력 {s.effort} / 최대 단계 {s.max_steps}")
     _print(f"- JEJUDATAHUB_PROJECT_KEY: {'✔ 설정됨' if s.has_datahub_key else '○ 없음 (파일/샘플 모드로 동작)'}")
     _print(f"- 데이터 목록: {'✔' if CATALOG_FILE.exists() else '✖'} {CATALOG_FILE}")
@@ -124,7 +132,9 @@ def cmd_ask(args: argparse.Namespace) -> int:
     _print("=" * 70)
     _print(result.text)
     _print("=" * 70)
-    _print(f"단계 {len(result.steps)}개 · 토큰 입력 {result.usage.get('input_tokens', 0):,} / 출력 {result.usage.get('output_tokens', 0):,}")
+    from .agent import usage_summary
+
+    _print(f"단계 {len(result.steps)}개 · 토큰 {usage_summary(result.usage)}")
     for r in agent.session.reports:
         _print(f"보고서: {r.html_path}")
     return 1 if result.error else 0
@@ -214,6 +224,44 @@ def cmd_data_test_api(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_data_check_api(args: argparse.Namespace) -> int:
+    from .config import OUTPUT_DIR
+    from .datahub import DataHubClient, DataStore
+    from .datahub.apicheck import check_apis, format_report, save_results
+
+    store = DataStore()
+    if not store.client.configured:
+        _print("JEJUDATAHUB_PROJECT_KEY 가 없습니다. .env 에 제주데이터허브 프로젝트 키를 넣은 뒤 다시 실행하세요.")
+        return 2
+    rows = max(1, int(args.rows))
+    client = DataHubClient(
+        project_key=store.client.project_key,
+        base_url=store.client.base_url,
+        page_size=rows,
+        max_pages=1,
+        sleep_between_pages=0,
+    )
+    if args.dataset:
+        specs = []
+        for key in args.dataset:
+            spec = store.registry.find(key)
+            if spec is None:
+                _print(f"레지스트리에 없는 데이터셋: {key}")
+                return 2
+            specs.append(spec)
+    else:
+        specs = [sp for sp in store.registry if sp.access in ("api", "api,file")]
+    extra: dict[str, str] = {}
+    for kv in args.param or []:
+        k, _, v = kv.partition("=")
+        if k:
+            extra[k] = v
+    results = check_apis(client, specs, extra_params=extra, rows=rows)
+    path = save_results(results, OUTPUT_DIR / "checks")
+    _print(format_report(results, saved_path=path))
+    return 0 if all(r.status != "error" for r in results) else 1
+
+
 # ----------------------------------------------------------------------------- scenario / samples
 def cmd_scenario_run(args: argparse.Namespace) -> int:
     agent = _make_agent(args)
@@ -290,6 +338,11 @@ def build_parser() -> argparse.ArgumentParser:
     ta.add_argument("dataset")
     ta.add_argument("--param", action="append", help="질의 변수 key=value (여러 번 가능)")
     ta.set_defaults(func=cmd_data_test_api)
+    ca = dt.add_parser("check-api", help="등록 데이터셋 전체 Open API 일괄 점검")
+    ca.add_argument("--dataset", action="append", help="특정 데이터셋만 (id/No./이름, 여러 번 가능)")
+    ca.add_argument("--param", action="append", help="모든 호출에 붙일 질의 변수 key=value (여러 번 가능)")
+    ca.add_argument("--rows", type=int, default=2, help="데이터셋마다 가져올 예시 행 수 (기본 2)")
+    ca.set_defaults(func=cmd_data_check_api)
 
     sc = sub.add_parser("scenario", help="재현 시나리오").add_subparsers(dest="sub", required=True)
     sr = sc.add_parser("run", help="시나리오 파일 실행")

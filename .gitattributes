@@ -1,0 +1,4 @@
+# 윈도우 배치 파일은 CRLF, 셸 스크립트는 LF 로 체크아웃한다 (ZIP 내려받기 포함).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf

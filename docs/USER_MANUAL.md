@@ -74,4 +74,5 @@
 - 설치: `setup.bat`(Windows) / `./setup.sh` · 시작: `run.bat` / `./run.sh` (또는 `streamlit run app.py`) · 점검: `python -m jeju_agent.cli doctor`
 - 키 설정: `.env` (`ANTHROPIC_API_KEY`, `JEJUDATAHUB_PROJECT_KEY`)
 - 실제 데이터 연결: `jeju_agent/datahub/registry.yaml` 의 `api_id`, 또는 `data/raw/` 에 파일 저장
+- Open API 일괄 점검: `python -m jeju_agent.cli data check-api` (센터·개인 PC 에서 실행, 결과를 보고 `rename` 보정)
 - 로그: `outputs/traces/` (질문·도구 호출·결과 요약), 보고서: `outputs/reports/`

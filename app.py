@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from jeju_agent import __version__  # noqa: E402
-from jeju_agent.agent import Agent, AgentEvent  # noqa: E402
+from jeju_agent.agent import Agent, AgentEvent, usage_summary  # noqa: E402
 from jeju_agent.charts import load_figure  # noqa: E402
 from jeju_agent.config import Settings  # noqa: E402
 
@@ -121,8 +121,8 @@ def render_assistant_turn(turn: dict) -> None:
         except OSError as e:
             st.warning(f"파일을 읽지 못했습니다: {e}")
     usage = turn.get("usage") or {}
-    if usage.get("input_tokens") or usage.get("output_tokens"):
-        st.caption(f"토큰 사용: 입력 {usage.get('input_tokens', 0):,} (캐시 {usage.get('cache_read_input_tokens', 0):,}) · 출력 {usage.get('output_tokens', 0):,}")
+    if any(usage.get(k) for k in ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")):
+        st.caption("토큰 사용: " + usage_summary(usage))
 
 
 # ----------------------------------------------------------------------------- 상태
@@ -181,8 +181,8 @@ with st.sidebar:
         st.download_button("🐍 전체 재현 스크립트", data=agent.session.reproduction_script().encode("utf-8"), file_name=f"{agent.session.id}_reproduce.py", mime="text/x-python")
         st.caption(f"차트 {len(agent.session.charts)}개 · 보고서 {len(agent.session.reports)}개 · 코드 {len(agent.session.code_history)}단계")
     tu = agent.total_usage
-    if tu.get("input_tokens"):
-        st.caption(f"누적 토큰: 입력 {tu['input_tokens']:,} / 출력 {tu['output_tokens']:,}")
+    if any(tu.values()):
+        st.caption("누적 토큰: " + usage_summary(tu))
 
 # ----------------------------------------------------------------------------- 본문
 st.markdown("### 무엇이 궁금하세요? 제주 데이터로 답해 드립니다.")

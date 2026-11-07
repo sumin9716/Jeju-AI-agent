@@ -99,6 +99,15 @@ class DataHubClient:
         self.max_pages = max_pages
         self.sleep_between_pages = sleep_between_pages
         self.session = session or requests.Session()
+        if session is None:
+            from .. import __version__
+
+            self.session.headers.update(
+                {
+                    "User-Agent": f"JejuDataNavigator/{__version__} (+https://github.com/sumin9716/Jeju-AI-agent)",
+                    "Accept": "application/json",
+                }
+            )
 
     # ------------------------------------------------------------------ 준비 상태
     @property

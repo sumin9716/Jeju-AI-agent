@@ -54,3 +54,20 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: python -m pytest -q
+
+      # 설치 스크립트를 실제로 실행해 문법 오류와 .env 덮어쓰기 같은 실수를 잡는다.
+      - name: setup.bat smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call setup.bat < NUL
+          if errorlevel 1 exit /b 1
+          if not exist .venv\Scripts\python.exe exit /b 1
+          fc /b .env .env.example
+
+      - name: setup.sh smoke test (Linux)
+        if: runner.os == 'Linux' && matrix.python == '3.13'
+        run: |
+          bash setup.sh
+          test -x .venv/bin/python
+          cmp .env .env.example
