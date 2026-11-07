@@ -102,6 +102,41 @@ datasets:
       getoffCnt: 하차인원
     notes: 현금 승차는 집계되지 않을 수 있다. 정류소 기본 정보(No.726)와 정류소ID로 결합해 좌표를 얻을 수 있다.
 
+  - id: bus_route_daily_users
+    catalog_no: 724
+    name: 일일 노선별 버스 이용자 정보
+    category: 교통, 안전
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: 1t4tbb16b4t1t11tt11tDt1ab6114a1t
+    api_params:
+      startDate: "{{today-21d}}"
+      endDate: "{{today-8d}}"
+    date_params: [startDate, endDate]
+    filter_params:
+      moveType: 승차 또는 하차
+    file_glob: "*노선별*이용자*.csv;*노선별*.xlsx;bus_route_daily*.csv"
+    sample_file: bus_route_daily_users_sample.csv
+    update: "2015-01-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date, desc: baseDate}
+      - {name: 노선명, dtype: str, desc: routeName}
+      - {name: 승하차구분, dtype: str, desc: 승차/하차 (moveType)}
+      - {name: 이용자수, dtype: int, desc: 교통카드 기준 (userCount)}
+    rename:
+      baseDate: 날짜
+      routeName: 노선명
+      moveType: 승하차구분
+      userCount: 이용자수
+    notes: >-
+      노선별 하루 버스 이용자 수(교통카드 기준). 정류소별 자료(bus_stop_daily_users, No.725)는 아직 API ID 가 없어 샘플만 있으므로,
+      실제 버스 이용 변화는 이 데이터로 본다. moveType=승차 처럼 거르면 호출 수가 절반으로 준다. 허브 갱신이 늦을 수 있어 기본
+      기간이 비면 가장 최근 날짜를 찾아 다시 부른다. 공개 코드에서 확인한 응답 필드는 baseDate·routeName·userCount 이고,
+      나머지 필드와 갱신 지연은 check-api --deep 으로 확인한다.
+
   - id: bus_stops
     catalog_no: 726
     name: 버스 정류소 기본 정보
@@ -109,28 +144,34 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
+    api_id: DD11ab6a6t11D16baaa1a2tD26ata161
     api_params: {}
+    filter_params:
+      stationName: 정류소 이름
     file_glob: "*정류소*기본*.csv;bus_stops*.csv"
     sample_file: bus_stops_sample.csv
     update: "2019-04-01 ~ (일 단위 자동갱신)"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: 정류소ID, dtype: str}
-      - {name: 정류소명, dtype: str}
-      - {name: 시군구, dtype: str}
-      - {name: 읍면동, dtype: str}
-      - {name: 위도, dtype: float}
-      - {name: 경도, dtype: float}
+      - {name: 정류소ID, dtype: str, desc: stationId}
+      - {name: 정류소명, dtype: str, desc: stationName}
+      - {name: 정류소주소, dtype: str, desc: stationAddress}
+      - {name: 지역정보, dtype: str, desc: localInfo}
+      - {name: 방향, dtype: str, desc: direction}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
     rename:
       stationId: 정류소ID
-      stationNm: 정류소명
-      emdNm: 읍면동
-      lat: 위도
-      lng: 경도
-      lon: 경도
-    notes: 지도 시각화와 정류소별 이용자 데이터 결합에 사용.
+      stationName: 정류소명
+      stationAddress: 정류소주소
+      localInfo: 지역정보
+      direction: 방향
+      latitude: 위도
+      longitude: 경도
+    notes: >-
+      정류소 좌표와 주소. 지도 시각화와 이용자 데이터 결합에 쓴다. 읍면동 컬럼은 따로 없으니 필요하면 정류소주소에서 찾는다.
+      전체 목록은 쪽당 100건씩 여러 번 부르므로 이름 하나만 볼 때는 stationName 으로 거른다. 공개 저장소 코드에서 확인한 API ID·필드명이며 실제 응답은 아직 검증 전이다(check-api 로 확인).
 
   - id: daily_weather
     catalog_no: 756
@@ -139,34 +180,76 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브, 원자료 기상청)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
-    api_params: {}
+    api_id: 1aD5taat1attaa51Db1511b51ab9Da19
+    api_params:
+      startDate: "{{today-14d}}"
+      endDate: "{{today-1d}}"
+    date_params: [startDate, endDate]
+    day_param: searchDate
+    api_paging: {max_days: 400}
     file_glob: "*기상*.csv;*기상*.xlsx;daily_weather*.csv"
     sample_file: daily_weather_sample.csv
     update: "2014-01-01 ~ (일 단위 자동갱신)"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: 날짜, dtype: date}
-      - {name: 관측소명, dtype: str, desc: 제주/서귀포/성산/고산 등}
+      - {name: 날짜, dtype: date, desc: baseDate}
+      - {name: 관측소명, dtype: str, desc: observatoryName (제주/서귀포/성산/고산 등)}
       - {name: 평균기온, dtype: float, desc: ℃}
       - {name: 최고기온, dtype: float, desc: ℃}
+      - {name: 최고기온시각, dtype: str, desc: HHMM}
       - {name: 최저기온, dtype: float, desc: ℃}
-      - {name: 강수량, dtype: float, desc: mm}
+      - {name: 최저기온시각, dtype: str, desc: HHMM}
+      - {name: 강수량, dtype: float, desc: 일 강수량 mm (dailyRainfall)}
       - {name: 평균풍속, dtype: float, desc: m/s}
+      - {name: 최대풍속, dtype: float, desc: m/s}
+      - {name: 최대풍속시각, dtype: str, desc: HHMM}
+      - {name: 최대풍속방향, dtype: str}
     rename:
       baseDate: 날짜
-      date: 날짜
-      stationNm: 관측소명
-      stnNm: 관측소명
-      avgTa: 평균기온
-      avgTemp: 평균기온
-      maxTa: 최고기온
-      minTa: 최저기온
-      sumRn: 강수량
-      rain: 강수량
-      avgWs: 평균풍속
-    notes: 관측소별 값이므로 읍면동과 결합할 때는 가장 가까운 관측소를 기준으로 한다.
+      observatoryName: 관측소명
+      averageTemperature: 평균기온
+      highestTemperature: 최고기온
+      highestTemperatureTime: 최고기온시각
+      lowestTemperature: 최저기온
+      lowestTemperatureTime: 최저기온시각
+      dailyRainfall: 강수량
+      averageWindSpeed: 평균풍속
+      maximumWindSpeed: 최대풍속
+      maximumWindSpeedTime: 최대풍속시각
+      maximumWindSpeedDirection: 최대풍속방향
+    notes: >-
+      API 는 하루짜리 searchDate(YYYYMMDD)만 받으므로 기간은 하루씩 나눠 부른다(1년이면 약 365회 호출로 수 분 걸림).
+      하루에 관측소마다 1행이다. 관측소별 값이므로 정류소·읍면동과 결합할 때는 기상관측소 정보(weather_stations, No.757)의
+      좌표로 가장 가까운 관측소를 고른다. 공개 저장소 코드에서 확인한 API ID·필드명이며 실제 응답은 아직 검증 전이다(check-api 로 확인).
+
+  - id: weather_stations
+    catalog_no: 757
+    name: 기상관측소 정보
+    category: 환경, 재난
+    provider: 제주특별자치도 (제주데이터허브, 원자료 기상청)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: t1bab75a555a15715btaa7a5abaa1aab
+    api_params: {}
+    filter_params:
+      observatoryName: 관측소 이름 (예 제주, 고산)
+    file_glob: "*기상관측소*.csv;*관측소*.xlsx;weather_stations*.csv"
+    sample_file: weather_stations_sample.csv
+    update: "2019-04-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 관측소명, dtype: str, desc: observatoryName}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
+    rename:
+      observatoryName: 관측소명
+      latitude: 위도
+      longitude: 경도
+    notes: >-
+      관측소 이름과 좌표. 일별 기상 정보(daily_weather)의 관측소명과 같은 이름이라, 정류소·읍면동마다 가장 가까운 관측소를
+      고를 때 쓴다. 공개 저장소 코드에서 확인한 API ID·필드명이며 실제 응답은 아직 검증 전이다(check-api 로 확인).
 
   - id: card_domestic_tourist
     catalog_no: 741
@@ -175,32 +258,53 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브, 카드사 제공)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
-    api_params: {}
+    api_id: 5D5a577taba7tbb71at1b1bt9tatata9
+    api_params:
+      startDate: "201801"
+      endDate: "201812"
+    date_params: [startDate, endDate]
+    date_format: "%Y%m"
+    filter_params:
+      sigungu: 제주시 또는 서귀포시
+      cityGubun: 도심구분 (동 또는 읍면)
+      marketType: 업종 (예 유흥)
+      userType: 관광객구분 (예 내국인관광객, 제주도민)
+      ageGroup: 연령대 (예 60대이상)
+      gender: 남 또는 여
     file_glob: "*카드*이용*.csv;*카드*.xlsx;card_domestic*.csv"
     sample_file: card_domestic_tourist_sample.csv
     update: "2016-09-01 ~ 2018-12-31"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: 연월, dtype: str, desc: YYYY-MM}
-      - {name: 읍면동, dtype: str}
-      - {name: 업종, dtype: str, desc: 식음료/소매/숙박/문화레저/교통/쇼핑 등}
-      - {name: 성별, dtype: str}
-      - {name: 연령대, dtype: str}
-      - {name: 이용건수, dtype: int}
-      - {name: 이용금액, dtype: int, desc: 원}
+      - {name: 연월, dtype: date, desc: 월 첫날 (dtYearMonth YYYYMM)}
+      - {name: 시도, dtype: str, desc: sido}
+      - {name: 시군구, dtype: str, desc: 제주시/서귀포시 (sigungu)}
+      - {name: 도심구분, dtype: str, desc: 동/읍면 (cityGubun)}
+      - {name: 업종, dtype: str, desc: marketType}
+      - {name: 관광객구분, dtype: str, desc: 내국인관광객/제주도민 등 (userType)}
+      - {name: 연령대, dtype: str, desc: ageGroup}
+      - {name: 성별, dtype: str, desc: gender}
+      - {name: 이용자수, dtype: int, desc: userCount}
+      - {name: 이용건수, dtype: int, desc: useCount}
+      - {name: 이용금액, dtype: int, desc: 원 (useCost)}
     rename:
-      baseYm: 연월
-      ym: 연월
-      emdNm: 읍면동
-      industry: 업종
-      bizType: 업종
+      dtYearMonth: 연월
+      sido: 시도
+      sigungu: 시군구
+      cityGubun: 도심구분
+      marketType: 업종
+      userType: 관광객구분
+      ageGroup: 연령대
       gender: 성별
-      age: 연령대
-      useCnt: 이용건수
-      useAmt: 이용금액
-    notes: 카드 명의자 기준 성별·연령대이므로 실제 이용자와 다를 수 있다. 수집 기간이 2018년까지이므로 최근 추세 해석에 주의.
+      userCount: 이용자수
+      useCount: 이용건수
+      useCost: 이용금액
+    notes: >-
+      읍면동 단위가 아니다: 시군구(제주시·서귀포시)와 도심구분(동/읍면)까지만 있으므로 특정 동의 소비는 '제주시 동 지역' 같은
+      범위로 대신 답하고 그 한계를 밝힌다. 관광객구분에 제주도민도 있다. 기간 변수는 월(YYYYMM)이고 자료는 2016-09~2018-12 이다.
+      2018년 1년이 약 8천 건(80여 회 호출)이므로 필요한 sigungu·marketType·userType 으로 거른다. 카드 명의자 기준 성별·연령대다.
+      공개 저장소 코드와 그 실행 결과에서 확인한 구조이며, 사용자 PC 의 check-api 로는 아직 검증 전이다.
 
   - id: restaurants
     catalog_no: 571
@@ -235,23 +339,32 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
-    api_params: {}
+    api_id: DtaDa0555D801Da508DbDtt5t1bat1ta
+    api_params:
+      startDate: "201801"
+      endDate: "202507"
+    date_params: [startDate, endDate]
+    date_format: "%Y%m"
+    filter_params:
+      visitPurpose: 방문목적 (예 휴양및관람)
     file_glob: "*입도객*.csv;*입도객*.xlsx;visitors_by_purpose*.csv"
     sample_file: visitors_by_purpose_sample.csv
     update: "2018-01-01 ~ 2025-07-31"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: 연월, dtype: str}
-      - {name: 구분, dtype: str, desc: 내국인/외국인}
-      - {name: 방문목적, dtype: str, desc: 관광/사업/친지방문/기타 등}
-      - {name: 입도객수, dtype: int}
+      - {name: 연월, dtype: date, desc: 월 첫날 (dtYearMonth YYYYMM)}
+      - {name: 방문목적, dtype: str, desc: visitPurpose (예 휴양및관람)}
+      - {name: 입도객수, dtype: int, desc: visitorCnt}
     rename:
-      baseYm: 연월
-      purpose: 방문목적
+      dtYearMonth: 연월
+      visitPurpose: 방문목적
       visitorCnt: 입도객수
-    notes: 입도 집계 기준(공항·항만)이며 월 단위.
+    notes: >-
+      월별·방문목적별 입도객 수이며 내국인·외국인 구분이 없다. 외국인만 보려면 국가별 입도객 현황(No.754, 2021-08~)이 필요하다
+      (레지스트리 미등록이라 사용자가 파일을 data/raw 에 넣어야 함). 기간 변수는 월(YYYYMM)이고 자료는 2018-01~2025-07 이다.
+      방문목적 값은 '휴양및관람' 외에는 확인 전이므로 먼저 전체를 불러 고유값을 본다. 입도 집계 기준(공항·항만).
+      공개 저장소 코드와 그 실행 결과에서 확인한 구조이며, 사용자 PC 의 check-api 로는 아직 검증 전이다.
 
   - id: tourist_spots_domestic
     catalog_no: 746
@@ -316,7 +429,7 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
+    api_id: Dtb18ta1btbD1Da1a81aaDttab6tDabb
     api_params: {}
     file_glob: "*와이파이*AP*.csv;*공공와이파이*.csv;*wifi*.csv;public_wifi*.csv"
     sample_file: public_wifi_ap_sample.csv
@@ -324,22 +437,26 @@ datasets:
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: AP명, dtype: str, desc: 공공와이파이 AP 이름}
-      - {name: 설치장소, dtype: str, desc: 설치 장소 유형(버스정류장/관광지/공공시설 등)}
-      - {name: 시군구, dtype: str}
-      - {name: 읍면동, dtype: str}
-      - {name: 위도, dtype: float}
-      - {name: 경도, dtype: float}
+      - {name: AP그룹명, dtype: str, desc: apGroupName}
+      - {name: 설치위치, dtype: str, desc: installLocationDetail}
+      - {name: 분류, dtype: str, desc: category}
+      - {name: 세부분류, dtype: str, desc: categoryDetail}
+      - {name: 읍면동, dtype: str, desc: addressDong}
+      - {name: 상세주소, dtype: str, desc: addressDetail}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
     rename:
-      apNm: AP명
-      apName: AP명
-      place: 설치장소
-      installPlace: 설치장소
-      emdNm: 읍면동
-      lat: 위도
-      lng: 경도
-      lon: 경도
-    notes: 설치 위치 기준 정보이며 이용량은 별도 데이터(와이파이 사용량, No.743~752)에 있다. 지도 시각화에 적합.
+      apGroupName: AP그룹명
+      installLocationDetail: 설치위치
+      category: 분류
+      categoryDetail: 세부분류
+      addressDong: 읍면동
+      addressDetail: 상세주소
+      latitude: 위도
+      longitude: 경도
+    notes: >-
+      공공와이파이 AP 위치(위도·경도)와 설치 장소. 이용량은 별도 데이터(와이파이 사용량, No.743~752)에 있다. 지도 시각화에 적합.
+      공개 저장소 코드에서 확인한 API ID·필드명이며 실제 응답은 아직 검증 전이다(check-api 로 확인).
 
   - id: ev_charging_stations
     catalog_no: 494

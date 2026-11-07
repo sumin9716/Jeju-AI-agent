@@ -211,9 +211,16 @@ class Agent:
             lines.append(f"  - 컬럼: {cols}")
             if spec.date_params:
                 a, b = (spec.date_params + [spec.date_params[0]])[:2]
+                monthly = spec.date_format == "%Y%m"
+                fmt, ex_a, ex_b = ("YYYYMM", "201801", "201812") if monthly else ("YYYYMMDD", "20240101", "20240131")
                 lines.append(
-                    f"  - Open API 기간 변수: {a}, {b} (YYYYMMDD). 예: load_dataset params={{\"{a}\": \"20240101\", \"{b}\": \"20240131\"}}"
+                    f"  - Open API 기간 변수: {a}, {b} ({fmt}). 예: load_dataset params={{\"{a}\": \"{ex_a}\", \"{b}\": \"{ex_b}\"}}"
                 )
+                if spec.day_param:
+                    lines.append(
+                        f"  - 이 API 는 하루씩만 받는다({spec.day_param}). 기간을 주면 하루 1회씩 나눠 부르므로 1년이면 약 365회 호출(수 분)이 "
+                        "걸린다. 꼭 필요한 기간만 요청한다."
+                    )
             if spec.filter_params:
                 desc = "; ".join(f"{k}={v}" for k, v in spec.filter_params.items())
                 lines.append(f"  - 거르기 변수(params 에 함께 넣으면 필요한 행만 받아 빠르다): {desc}")

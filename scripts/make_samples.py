@@ -374,23 +374,110 @@ def make_foreign(weather: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     return long_df, short_df
 
 
+# ── 공개 코드에서 확인한 실제 API 구조에 맞추는 변환 ─────────────────────────────
+# 기존 함수가 공용 난수열을 쓰는 순서는 그대로 두고(다른 샘플이 바뀌지 않도록), 결과만 실제 구조로 바꾼다.
+# 변환에 필요한 난수는 데이터마다 따로 만든 난수열을 쓴다.
+
+
+def to_card_structure(old: pd.DataFrame) -> pd.DataFrame:
+    """No.741 실제 구조: 시군구 + 도심구분(동/읍면), 관광객구분(내국인관광객/제주도민), 연월 YYYYMM."""
+    r = np.random.default_rng(SEED + 741)
+    emd = _emd_lookup()
+    df = old.copy()
+    df["시군구"] = df["읍면동"].map(lambda e: emd[e][1])
+    df["도심구분"] = df["읍면동"].map(lambda e: "읍면" if e.endswith(("읍", "면")) else "동")
+    df["연령대"] = df["연령대"].replace({"60대 이상": "60대이상"})
+    keys = ["연월", "시군구", "도심구분", "업종", "성별", "연령대"]
+    agg = df.groupby(keys, as_index=False)[["이용건수", "이용금액"]].sum()
+    rows = []
+    for rec in agg.itertuples(index=False):
+        share = float(np.clip(r.normal(0.72, 0.05), 0.55, 0.9))
+        for user_type, w in (("내국인관광객", share), ("제주도민", 1 - share)):
+            cnt = int(round(rec.이용건수 * w))
+            amt = int(round(rec.이용금액 * w * r.normal(1, 0.03)))
+            users = int(round(cnt / r.uniform(1.2, 1.6)))
+            rows.append((rec.연월.replace("-", ""), "제주도", rec.시군구, rec.도심구분, rec.업종, user_type, rec.연령대, rec.성별, users, cnt, amt))
+    cols = ["연월", "시도", "시군구", "도심구분", "업종", "관광객구분", "연령대", "성별", "이용자수", "이용건수", "이용금액"]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def to_visitor_structure(old: pd.DataFrame) -> pd.DataFrame:
+    """No.755 실제 구조: 내·외국인 구분 없이 연월(YYYYMM)·방문목적별 입도객 수. '휴양및관람' 외 목적 이름은 가정."""
+    purpose = {"관광": "휴양및관람", "사업": "회의및업무", "친지방문": "친지방문", "교육": "교육여행", "기타": "기타"}
+    df = old.groupby(["연월", "방문목적"], as_index=False, sort=False)["입도객수"].sum()
+    df["연월"] = df["연월"].str.replace("-", "", regex=False)
+    df["방문목적"] = df["방문목적"].map(purpose)
+    return df[["연월", "방문목적", "입도객수"]]
+
+
+def to_stop_structure(old: pd.DataFrame) -> pd.DataFrame:
+    """No.726 실제 구조: 정류소ID·정류소명·정류소주소·지역정보·방향·위도·경도 (읍면동 컬럼 없음)."""
+    df = old.copy()
+    df["정류소주소"] = "제주특별자치도 " + df["시군구"] + " " + df["읍면동"] + " (샘플 주소)"
+    df["지역정보"] = df["읍면동"]
+    df["방향"] = ["시내 방면" if i % 2 == 0 else "외곽 방면" for i in range(len(df))]
+    return df[["정류소ID", "정류소명", "정류소주소", "지역정보", "방향", "위도", "경도"]]
+
+
+def to_wifi_structure(old: pd.DataFrame) -> pd.DataFrame:
+    """No.720 실제 구조: AP그룹명·설치위치·분류·세부분류·읍면동·상세주소·위도·경도."""
+    group = {"버스정류장": "교통시설", "항만": "교통시설", "관광지": "관광지", "해수욕장": "관광지",
+             "공공시설": "공공시설", "주민센터": "공공시설", "시장": "생활시설", "공원": "생활시설"}
+    df = old.copy()
+    out = pd.DataFrame({
+        "AP그룹명": "샘플 " + df["읍면동"] + " " + df["설치장소"],
+        "설치위치": df["AP명"].str.split("_").str[-1].radd(df["설치장소"] + " "),
+        "분류": df["설치장소"].map(group),
+        "세부분류": df["설치장소"],
+        "읍면동": df["읍면동"],
+        "상세주소": "제주특별자치도 " + df["시군구"] + " " + df["읍면동"] + " (샘플 주소)",
+        "위도": df["위도"],
+        "경도": df["경도"],
+    })
+    return out
+
+
+def make_weather_stations() -> pd.DataFrame:
+    """No.757 구조: 관측소명·위도·경도 (일별 기상 샘플의 관측소 4곳)."""
+    return pd.DataFrame([(n, lat, lon) for n, (lat, lon) in STATIONS.items()], columns=["관측소명", "위도", "경도"])
+
+
+def make_bus_routes(weather: pd.DataFrame) -> pd.DataFrame:
+    """No.724 구조: 날짜·노선명·승하차구분·이용자수. 노선 이름은 '샘플 …번' 형식의 가짜."""
+    r = np.random.default_rng(SEED + 724)
+    rain = weather[weather["관측소명"] == "제주"].set_index("날짜")["강수량"].to_dict()
+    routes = [(f"샘플 {n}번", r.uniform(300, 2500), r.uniform(0.2, 1.0)) for n in (101, 102, 201, 202, 231, 240, 251, 260, 281, 282, 290, 325, 360, 430, 510)]
+    rows = []
+    for d in DATES:
+        ds = d.strftime("%Y-%m-%d")
+        off = d.dayofweek >= 5
+        wet = rain.get(ds, 0.0) >= 10
+        for name, base, tourism in routes:
+            mult = season_factor(d, tourism) * ((0.75 + 0.4 * tourism) if off else 1.0) * (0.9 if wet else 1.0) * r.normal(1, 0.08)
+            ride = max(0, int(round(base * mult)))
+            alight = max(0, int(round(ride * r.normal(0.93, 0.05))))
+            rows.append((ds, name, "승차", ride))
+            rows.append((ds, name, "하차", alight))
+    return pd.DataFrame(rows, columns=["날짜", "노선명", "승하차구분", "이용자수"])
+
+
 def main() -> None:
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     weather = make_weather()
     outputs = {
         "daily_weather_sample.csv": weather,
         "floating_population_emd_sample.csv": make_floating(weather),
-        "card_domestic_tourist_sample.csv": make_card(),
+        "card_domestic_tourist_sample.csv": to_card_structure(make_card()),
         "restaurants_sample.csv": make_restaurants(),
-        "visitors_by_purpose_sample.csv": make_visitors(),
+        "visitors_by_purpose_sample.csv": to_visitor_structure(make_visitors()),
         "tourist_spots_domestic_sample.csv": make_spots(),
         "agri_price_daily_sample.csv": make_agri(),
     }
     stops, bus = make_bus(weather)
-    outputs["bus_stops_sample.csv"] = stops
+    outputs["bus_stops_sample.csv"] = to_stop_structure(stops)
     outputs["bus_stop_daily_users_sample.csv"] = bus
     # 위치 데이터 3종은 기존 샘플의 난수열을 바꾸지 않도록 마지막에 생성한다.
-    outputs["public_wifi_ap_sample.csv"] = make_wifi()
+    outputs["public_wifi_ap_sample.csv"] = to_wifi_structure(make_wifi())
     outputs["ev_charging_stations_sample.csv"] = make_ev()
     outputs["tourist_accommodations_sample.csv"] = make_accommodations()
     # 외국인 유동인구 2종도 기존 난수열을 보존하기 위해 뒤에 생성한다.
@@ -400,6 +487,9 @@ def main() -> None:
     outputs["oreum_locations_sample.csv"] = make_places("오름", {"base": 1, "tourism": 4}, ["오름"])
     outputs["museum_locations_sample.csv"] = make_places("박물관", {"base": 0, "tourism": 3}, ["박물관", "미술관", "전시관"])
     outputs["souvenir_shops_sample.csv"] = make_places("기념품가게", {"base": 1, "tourism": 5}, ["기념품", "특산품", "공예품"])
+    # 공개 코드로 API 를 찾은 데이터 2종 (자체 난수열 사용)
+    outputs["weather_stations_sample.csv"] = make_weather_stations()
+    outputs["bus_route_daily_users_sample.csv"] = make_bus_routes(weather)
     for name, df in outputs.items():
         path = SAMPLES_DIR / name
         df.to_csv(path, index=False, encoding="utf-8-sig")
@@ -411,6 +501,8 @@ def main() -> None:
         "값은 실제 통계가 아닙니다. 실제 분석은 `.env` 에 프로젝트 키를 넣어 Open API 로 수집하거나 "
         "허브에서 내려받은 파일을 `data/raw/` 에 넣어 수행하세요.\n\n"
         f"- 생성 시드: {SEED}\n- 기간: 2024년(일 단위), 카드 2017~2018(월), 입도객 2018~2025(월), 관광지 2019~2024(월)\n"
+        "- 카드(No.741)·입도객(No.755)·정류소(No.726)·와이파이(No.720)·노선별 버스(No.724)·기상관측소(No.757)는 공개 코드에서 확인한 "
+        "실제 API 응답 구조를 따른다(값과 이름은 가짜). 입도객의 방문목적은 '휴양및관람' 외에는 가정한 이름이다.\n"
         "- 위치 데이터(와이파이 AP·전기차 충전소·오름·박물관·기념품 가게)는 읍면동 중심 좌표 주변에 난수로 배치한 가짜 위치이며, 이름도 '샘플 …' 형식의 가짜입니다.\n",
         encoding="utf-8",
     )
