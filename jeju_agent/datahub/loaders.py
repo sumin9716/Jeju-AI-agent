@@ -8,8 +8,9 @@ from __future__ import annotations
 import glob
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Callable
 
 import pandas as pd
 
@@ -223,7 +224,10 @@ class DataStore:
         client: DataHubClient | None = None,
         raw_dir: Path | str = RAW_DIR,
         samples_dir: Path | str = SAMPLES_DIR,
+        today: Callable[[], date] = date.today,
     ):
+        self.today = today
+        self._latest_cache: dict[str, date | None] = {}
         self.registry = registry or load_registry()
         self.settings = settings or Settings()
         self.raw_dir = Path(raw_dir)
@@ -334,13 +338,29 @@ class DataStore:
     def _load_api(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
         if spec.access not in ("api", "api,file"):
             raise DataHubError("Open API 로 제공되지 않는 데이터입니다.")
-        merged = dict(spec.api_params or {})
-        merged.update(params or {})
+        today = self.today()
+        merged = render_params({**(spec.api_params or {}), **(params or {})}, today=today)
         client = self.client.for_paging(spec.api_paging)
         res = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+        pre_notes: list[str] = []
+        if res.df.empty and len(spec.date_params) >= 2:
+            latest = self.latest_date(spec, merged, client=client)
+            user_gave_dates = any(k in (params or {}) for k in spec.date_params[:2])
+            if latest is not None:
+                pre_notes.append(f"이 데이터의 가장 최근 날짜는 {latest.isoformat()} 입니다 (오늘보다 {(today - latest).days}일 전).")
+                if not user_gave_dates:
+                    s_key, e_key = spec.date_params[:2]
+                    start = latest - timedelta(days=13)
+                    merged = {**merged, s_key: start.strftime("%Y%m%d"), e_key: latest.strftime("%Y%m%d")}
+                    res = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+                    pre_notes.append(
+                        f"기본 기간에 데이터가 없어 가장 최근 2주({start.isoformat()} ~ {latest.isoformat()})로 다시 불러왔습니다."
+                    )
+            else:
+                pre_notes.append("최근 3년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
         df = normalize_dataframe(res.df, spec)
-        shown = render_params(merged)
-        notes = [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {res.total if res.total is not None else '알 수 없음'}건"]
+        shown = merged
+        notes = pre_notes + [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {res.total if res.total is not None else '알 수 없음'}건"]
         if res.from_cache:
             notes.append("디스크 캐시에서 읽음 (refresh=True 로 새로 수집 가능)")
         if shown:
@@ -362,6 +382,20 @@ class DataStore:
             spec=spec,
             notes=notes,
         )
+
+    def latest_date(self, spec: DatasetSpec, params: dict | None = None, client: DataHubClient | None = None) -> date | None:
+        """기간 변수가 있는 API 데이터의 가장 최근 날짜 (한 번 찾으면 이 실행 동안 기억)."""
+        from .freshness import find_latest_date
+
+        base = {k: v for k, v in (params or {}).items() if k not in spec.date_params[:2]}
+        key = spec.id + "|" + repr(sorted(base.items()))
+        if key not in self._latest_cache:
+            try:
+                latest, _ = find_latest_date(client or self.client.for_paging(spec.api_paging), spec, base, today=self.today())
+            except DataHubError:
+                latest = None
+            self._latest_cache[key] = latest
+        return self._latest_cache[key]
 
     def _load_file(self, spec: DatasetSpec, max_rows: int | None) -> LoadedDataset:
         paths = self.find_files(spec)

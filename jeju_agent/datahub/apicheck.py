@@ -12,7 +12,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .client import DataHubClient, DataHubError, render_params
+from .client import DataHubClient, DataHubError, PageSizeTooLarge, render_params
+from .freshness import find_latest_date
 from .registry import DatasetSpec
 
 
@@ -71,6 +72,14 @@ def _ymd(d: date) -> str:
     return d.strftime("%Y%m%d")
 
 
+def _looks_numeric(v) -> bool:
+    try:
+        float(str(v).replace(",", ""))
+        return True
+    except ValueError:
+        return False
+
+
 def deep_check(
     client: DataHubClient,
     spec: DatasetSpec,
@@ -78,59 +87,77 @@ def deep_check(
     today: date | None = None,
     big_size: int = 1000,
 ) -> dict:
-    """페이지 넘김·서버 페이지 상한·응답 메타·최신 데이터 날짜를 확인한다 (요청 최대 약 17회)."""
+    """가장 최근 데이터 날짜, 페이지 넘김, 쪽당 최대 건수, 응답 메타, 필터 변수 동작을 확인한다.
+
+    단계마다 따로 오류를 기록하므로 한 단계가 실패해도 나머지 결과는 남는다.
+    """
     today = today or date.today()
     c = client.for_paging(spec.api_paging)
-    out: dict = {}
+    out: dict = {"errors": []}
+    window = dict(params)
+
+    # 1) 가장 최근 데이터 날짜 → 점검 기간을 그 날짜 기준 최근 7일로
+    if len(spec.date_params) >= 2:
+        s_key, e_key = spec.date_params[:2]
+        try:
+            latest, n = find_latest_date(c, spec, params, today=today)
+            out["latest_date"] = latest.isoformat() if latest else None
+            out["probe_requests"] = n
+            if latest:
+                out["lag_days"] = (today - latest).days
+                window = {**params, s_key: _ymd(latest - timedelta(days=6)), e_key: _ymd(latest)}
+        except DataHubError as e:
+            out["errors"].append(f"최신 날짜 확인: {e}")
+    out["window"] = {k: window.get(k) for k in spec.date_params[:2]} if spec.date_params else {}
+
+    # 2) 페이지 넘김과 응답 메타
+    first_row: dict = {}
+    window_total = None
     try:
-        p1 = c.fetch_page(spec.api_id, params, page=1, size=2)
-        p2 = c.fetch_page(spec.api_id, params, page=2, size=2)
+        p1 = c.fetch_page(spec.api_id, window, page=1, size=2)
+        p2 = c.fetch_page(spec.api_id, window, page=2, size=2)
         out["meta"] = p1.meta
+        window_total = p1.total
+        out["window_total"] = window_total
+        first_row = p1.rows[0] if p1.rows else {}
         if not p1.rows:
-            out["paging"] = "데이터 없음"
+            out["paging"] = "확인 불가: 점검 기간에 데이터 없음"
         elif not p2.rows:
             out["paging"] = "2쪽 비어 있음" if (p1.total or 0) > 2 else "전체 2건 이하"
         elif p2.rows == p1.rows:
             out["paging"] = "실패: 2쪽이 1쪽과 같음 (페이지 변수 무시)"
         else:
             out["paging"] = "정상: 2쪽이 1쪽과 다름"
-        big = c.fetch_page(spec.api_id, params, page=1, size=big_size)
-        out["page_size"] = {"requested": big_size, "returned": len(big.rows), "total": big.total}
     except DataHubError as e:
-        out["error"] = str(e)
-        return out
+        out["errors"].append(f"페이지 넘김: {e}")
 
-    if len(spec.date_params) >= 2:
-        s_key, e_key = spec.date_params[:2]
-        found_end: date | None = None
-        for back in (0, 30, 60, 90, 180, 365, 730):
-            end = today - timedelta(days=back)
-            q = {**params, s_key: _ymd(end - timedelta(days=6)), e_key: _ymd(end)}
+    # 3) 쪽당 최대 건수
+    try:
+        big = c.fetch_page(spec.api_id, window, page=1, size=big_size)
+        out["page_size"] = {"requested": big_size, "returned": len(big.rows), "max": None}
+    except PageSizeTooLarge as e:
+        out["page_size"] = {"requested": big_size, "returned": None, "max": e.max_size}
+        try:
+            ok = c.fetch_page(spec.api_id, window, page=1, size=e.max_size)
+            out["page_size"]["returned"] = len(ok.rows)
+        except DataHubError as e2:
+            out["errors"].append(f"쪽당 최대 건수: {e2}")
+    except DataHubError as e:
+        out["errors"].append(f"쪽당 최대 건수: {e}")
+
+    # 4) 필터 변수: 응답의 글자 컬럼 이름을 같은 이름의 질의 변수로 넣어 건수가 줄어드는지 본다
+    filters: dict = {}
+    if first_row and window_total:
+        for col, val in first_row.items():
+            if val is None or _looks_numeric(val) or col in spec.date_params:
+                continue
             try:
-                r = c.fetch_page(spec.api_id, q, page=1, size=1)
+                r = c.fetch_page(spec.api_id, {**window, col: val}, page=1, size=1)
+                total = r.total if r.total is not None else len(r.rows)
+                filters[col] = {"value": val, "total": total, "works": bool(total) and total < window_total}
             except DataHubError as e:
-                out["latest_error"] = str(e)
-                break
-            if r.rows or (r.total or 0) > 0:
-                found_end = end
-                break
-        if found_end is not None:
-            latest = None
-            for d in range(7):
-                day = found_end - timedelta(days=d)
-                try:
-                    r = c.fetch_page(spec.api_id, {**params, s_key: _ymd(day), e_key: _ymd(day)}, page=1, size=1)
-                except DataHubError:
-                    break
-                if r.rows or (r.total or 0) > 0:
-                    latest = day
-                    out["rows_per_day"] = r.total
-                    break
-            out["latest_date"] = latest.isoformat() if latest else None
-            if latest:
-                out["lag_days"] = (today - latest).days
-        else:
-            out["latest_date"] = None
+                filters[col] = {"value": val, "error": str(e)[:160], "works": False}
+    out["filters"] = filters
     return out
 
 
@@ -154,24 +181,37 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
             lines.append("- 질의 변수: " + json.dumps(r.params, ensure_ascii=False))
         if r.deep:
             d = r.deep
-            if d.get("error"):
-                lines.append(f"- 정밀 점검 실패: {d['error']}")
-            else:
-                lines.append(f"- 페이지 넘김: {d.get('paging')}")
-                ps = d.get("page_size") or {}
-                if ps:
-                    lines.append(f"- 한 번에 받을 수 있는 건수: {ps.get('requested')}건 요청 → {ps.get('returned')}건 받음")
-                if d.get("meta"):
-                    lines.append("- 응답 메타 필드: " + json.dumps(d["meta"], ensure_ascii=False))
-                if "latest_date" in d:
-                    if d.get("latest_date"):
-                        lines.append(
-                            f"- 가장 최근 데이터 날짜: {d['latest_date']} (오늘보다 {d.get('lag_days')}일 전, 그날 {d.get('rows_per_day')}건)"
-                        )
-                    else:
-                        lines.append("- 가장 최근 데이터 날짜: 최근 2년 안에서 찾지 못함")
-                if d.get("latest_error"):
-                    lines.append(f"- 최신 날짜 확인 중 오류: {d['latest_error']}")
+            lines.append("- 정밀 점검:")
+            if "latest_date" in d:
+                if d.get("latest_date"):
+                    lines.append(
+                        f"  - 가장 최근 데이터 날짜: {d['latest_date']} (오늘보다 {d.get('lag_days')}일 전, 확인 요청 {d.get('probe_requests')}회)"
+                    )
+                else:
+                    lines.append(f"  - 가장 최근 데이터 날짜: 최근 3년 안에서 찾지 못함 (확인 요청 {d.get('probe_requests')}회)")
+            if d.get("window"):
+                total = d.get("window_total")
+                lines.append(
+                    "  - 점검 기간: " + " ~ ".join(str(v) for v in d["window"].values())
+                    + (f", 전체 {total:,}건" if isinstance(total, int) else "")
+                )
+            if d.get("paging"):
+                lines.append(f"  - 페이지 넘김: {d['paging']}")
+            ps = d.get("page_size") or {}
+            if ps.get("max"):
+                lines.append(f"  - 쪽당 최대 건수: {ps['max']}건 ({ps['requested']}건 요청은 서버가 거부, {ps['max']}건 요청 → {ps.get('returned')}건 받음)")
+            elif ps:
+                lines.append(f"  - 쪽당 건수: {ps['requested']}건 요청 → {ps.get('returned')}건 받음")
+            for col, f in (d.get("filters") or {}).items():
+                if "error" in f:
+                    lines.append(f"  - 필터 {col}={f['value']}: ✖ 오류 ({f['error']})")
+                else:
+                    mark = "✔ 동작" if f.get("works") else "✖ 효과 없음"
+                    lines.append(f"  - 필터 {col}={f['value']}: {mark} (전체 {d.get('window_total')} → {f.get('total')}건)")
+            if d.get("meta"):
+                lines.append("  - 응답 메타 필드: " + json.dumps(d["meta"], ensure_ascii=False))
+            for err in d.get("errors") or []:
+                lines.append(f"  - 오류: {err}")
         lines.append("")
     n_ok = sum(r.status in ("ok", "empty") for r in results)
     n_err = sum(r.status == "error" for r in results)

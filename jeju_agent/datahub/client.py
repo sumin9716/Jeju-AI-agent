@@ -37,6 +37,14 @@ class DataHubError(RuntimeError):
     """Open API 호출 실패 (설정 누락, 네트워크, 인증, 응답 형식 오류)."""
 
 
+class PageSizeTooLarge(DataHubError):
+    """서버가 쪽당 건수(limit) 상한을 넘었다고 거부함. max_size 는 서버가 알려준 최대값."""
+
+    def __init__(self, message: str, max_size: int):
+        super().__init__(message)
+        self.max_size = max_size
+
+
 @dataclass
 class FetchResult:
     df: pd.DataFrame
@@ -61,6 +69,10 @@ def hub_error_message(text: str) -> str:
     m = re.search(r'"message"\s*:\s*"([^"]+)"', unescaped)
     if m:
         return m.group(1)
+    field_m = re.search(r"on field '([^']+)': rejected value \[([^\]]*)\]", unescaped)
+    defaults = re.findall(r"default message \[([^\]]+)\]", unescaped)
+    if field_m and defaults:
+        return f"'{field_m.group(1)}' 값 {field_m.group(2)} 거부: {defaults[-1]}"
     return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()[:300]
 
 
@@ -103,8 +115,8 @@ class DataHubClient:
         timeout: float = 30.0,
         page_param: str = "number",
         size_param: str = "limit",
-        page_size: int = 1000,
-        max_pages: int = 500,
+        page_size: int = 100,
+        max_pages: int = 1000,
         sleep_between_pages: float = 0.1,
         session: requests.Session | None = None,
     ):
@@ -235,9 +247,11 @@ class DataHubClient:
         if resp.status_code == 404:
             raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.")
         if resp.status_code >= 400:
-            raise DataHubError(
-                f"허브가 요청을 거부했습니다(HTTP {resp.status_code}): {self._mask(hub_error_message(resp.text))}"
-            )
+            message = f"허브가 요청을 거부했습니다(HTTP {resp.status_code}): {self._mask(hub_error_message(resp.text))}"
+            cap = re.search(r"less than or equal to (\d+)", resp.text or "")
+            if cap and (self.size_param in (resp.text or "")) and int(cap.group(1)) < int(q[self.size_param]):
+                raise PageSizeTooLarge(message, max_size=int(cap.group(1)))
+            raise DataHubError(message)
         try:
             payload = resp.json()
         except ValueError as e:
@@ -261,7 +275,13 @@ class DataHubClient:
         fetched = 0
         prev_sig: tuple | None = None
         while page <= self.max_pages:
-            res = self.fetch_page(api_id, params, page=page, size=size)
+            try:
+                res = self.fetch_page(api_id, params, page=page, size=size)
+            except PageSizeTooLarge as e:
+                if page != 1 or e.max_size >= size or e.max_size < 1:
+                    raise
+                size = e.max_size  # 서버가 알려준 쪽당 최대 건수로 다시 요청
+                res = self.fetch_page(api_id, params, page=page, size=size)
             rows = res.rows
             if rows:
                 sig = (len(rows), json.dumps(rows[0], sort_keys=True, ensure_ascii=False, default=str),

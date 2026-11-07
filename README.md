@@ -75,7 +75,7 @@ python -m jeju_agent.cli ask "비 오는 날에는 버스 이용객이 얼마나
 ```bash
 python -m jeju_agent.cli data check-api
 python -m jeju_agent.cli data check-api --dataset floating_population_emd --param startDate=20240101 --param endDate=20240107
-python -m jeju_agent.cli data check-api --deep    # 페이지 넘김, 한 번에 받는 건수, 가장 최근 데이터 날짜까지 확인
+python -m jeju_agent.cli data check-api --deep    # 가장 최근 데이터 날짜, 페이지 넘김, 쪽당 최대 건수, 필터 변수 동작까지 확인
 ```
 제주데이터허브는 웹 방화벽이 있어 클라우드 서버에서의 호출은 차단될 수 있습니다. 센터 PC 나 개인 PC 에서 실행하세요.
 
