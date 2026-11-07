@@ -401,3 +401,74 @@ datasets:
       lng: 경도
       lon: 경도
     notes: 관광진흥법상 등록 숙박업 기준이며 농어촌민박(No.402)·일반 숙박시설은 별도 데이터다.
+
+  - id: floating_population_foreign_long
+    catalog_no: 747
+    name: 읍면동 단위 외국인 장기체류 유동인구
+    category: 인구, 생활
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*외국인*장기*.csv;*외국인*장기*.xlsx;floating_population_foreign_long*.csv"
+    sample_file: floating_population_foreign_long_sample.csv
+    update: "2017-11-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date, desc: 기준 일자}
+      - {name: 국가, dtype: str, desc: 국적}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 거주인구, dtype: int, desc: 장기체류 외국인 중 거주 추정}
+      - {name: 근무인구, dtype: int}
+      - {name: 방문자수, dtype: int}
+    rename:
+      baseDate: 날짜
+      date: 날짜
+      nation: 국가
+      country: 국가
+      nationNm: 국가
+      sigungu: 시군구
+      city: 시군구
+      emd: 읍면동
+      emdNm: 읍면동
+      residPop: 거주인구
+      workPop: 근무인구
+      visitPop: 방문자수
+    notes: 장기체류(90일 초과 등록 외국인) 기준 통신사 추정치. 성별·연령대 항목이 없다.
+
+  - id: floating_population_foreign_short
+    catalog_no: 748
+    name: 읍면동 단위 외국인 단기체류 유동인구
+    category: 인구, 생활
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*외국인*단기*.csv;*외국인*단기*.xlsx;floating_population_foreign_short*.csv"
+    sample_file: floating_population_foreign_short_sample.csv
+    update: "2018-01-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date, desc: 기준 일자}
+      - {name: 국가, dtype: str, desc: 국적}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 방문자수, dtype: int, desc: 단기체류(관광 등) 외국인 추정}
+    rename:
+      baseDate: 날짜
+      date: 날짜
+      nation: 국가
+      country: 국가
+      nationNm: 국가
+      sigungu: 시군구
+      city: 시군구
+      emd: 읍면동
+      emdNm: 읍면동
+      visitPop: 방문자수
+      visitCnt: 방문자수
+    notes: 단기체류(관광객 등) 외국인 로밍 기반 추정치. 내국인 유동인구와 결합하면 읍면동별 내·외국인 비중을 볼 수 있다.

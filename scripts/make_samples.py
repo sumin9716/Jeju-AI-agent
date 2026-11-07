@@ -324,6 +324,31 @@ def make_accommodations() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+COUNTRIES = [("중국", 0.42), ("일본", 0.12), ("대만", 0.10), ("미국", 0.08), ("베트남", 0.07), ("싱가포르", 0.05), ("기타", 0.16)]
+
+
+def make_foreign(weather: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    rain = weather.set_index(["날짜", "관측소명"])["강수량"].to_dict()
+    long_rows, short_rows = [], []
+    for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, _, _ in EMD:
+        long_base = base_res * 0.018 * (1.6 if emd in ("연동", "노형동", "이도2동") else 1.0)
+        short_base = base_visit * 0.12 * (0.3 + tourism)
+        for d in DATES:
+            ds = d.strftime("%Y-%m-%d")
+            r = rain.get((ds, stn), 0.0)
+            season = season_factor(d, 1.0)
+            for country, share in COUNTRIES:
+                resid = long_base * share * rng.normal(1, 0.03)
+                work = resid * 0.55 * (0.4 if d.dayofweek >= 5 else 1.0) * rng.normal(1, 0.05)
+                visit_long = resid * 0.25 * rng.normal(1, 0.1)
+                long_rows.append((ds, country, sgg, emd, int(round(resid)), int(round(work)), int(round(visit_long))))
+                short = short_base * share * season * (0.8 if r >= 10 else 1.0) * rng.normal(1, 0.12)
+                short_rows.append((ds, country, sgg, emd, int(round(short))))
+    long_df = pd.DataFrame(long_rows, columns=["날짜", "국가", "시군구", "읍면동", "거주인구", "근무인구", "방문자수"])
+    short_df = pd.DataFrame(short_rows, columns=["날짜", "국가", "시군구", "읍면동", "방문자수"])
+    return long_df, short_df
+
+
 def main() -> None:
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     weather = make_weather()
@@ -343,6 +368,10 @@ def main() -> None:
     outputs["public_wifi_ap_sample.csv"] = make_wifi()
     outputs["ev_charging_stations_sample.csv"] = make_ev()
     outputs["tourist_accommodations_sample.csv"] = make_accommodations()
+    # 외국인 유동인구 2종도 기존 난수열을 보존하기 위해 뒤에 생성한다.
+    foreign_long, foreign_short = make_foreign(weather)
+    outputs["floating_population_foreign_long_sample.csv"] = foreign_long
+    outputs["floating_population_foreign_short_sample.csv"] = foreign_short
     for name, df in outputs.items():
         path = SAMPLES_DIR / name
         df.to_csv(path, index=False, encoding="utf-8-sig")

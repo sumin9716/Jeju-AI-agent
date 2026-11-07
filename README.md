@@ -81,7 +81,7 @@ jeju_agent/
   tools/schemas.py          도구 정의 7종 (search_catalog, list_datasets, load_dataset, load_file, run_python, make_chart, write_report)
   tools/executor.py         도구 실행기
   catalog.py                데이터 목록 1,259종 검색
-  datahub/registry.yaml     등록 데이터셋 12종 (출처·컬럼·이용조건·API 설정)
+  datahub/registry.yaml     등록 데이터셋 14종 (출처·컬럼·이용조건·API 설정)
   datahub/client.py         제주데이터허브 Open API 클라이언트 (페이지 수집·캐시·오류 처리)
   datahub/loaders.py        API → 파일 → 샘플 순 적재, 컬럼 정규화
   sandbox.py / sandbox_runner.py   격리 코드 실행
