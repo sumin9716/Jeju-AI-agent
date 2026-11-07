@@ -257,7 +257,7 @@ def cmd_data_check_api(args: argparse.Namespace) -> int:
         if k:
             extra[k] = v
     results = check_apis(client, specs, extra_params=extra, rows=rows)
-    path = save_results(results, OUTPUT_DIR)
+    path = save_results(results, OUTPUT_DIR / "checks")
     _print(format_report(results, saved_path=path))
     return 0 if all(r.status != "error" for r in results) else 1
 

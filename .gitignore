@@ -27,6 +27,10 @@ outputs/charts/*
 !outputs/charts/.gitkeep
 outputs/traces/*
 !outputs/traces/.gitkeep
+outputs/checks/*
+!outputs/checks/.gitkeep
+outputs/*.json
+outputs/*.md
 
 # OS / editor
 .DS_Store

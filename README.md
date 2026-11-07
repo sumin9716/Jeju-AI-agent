@@ -71,7 +71,7 @@ python -m jeju_agent.cli ask "비 오는 날에는 버스 이용객이 얼마나
 
 출처 우선순위는 `API → 파일 → 샘플` 이며, 답변·보고서마다 어떤 출처를 썼는지 표시됩니다. 현재 상태는 `python -m jeju_agent.cli data status` 로 확인합니다.
 
-**Open API 연결 점검**: 아래 명령은 `api_id` 가 있는 등록 데이터셋마다 첫 몇 건만 호출해 성공 여부, 전체 건수, 응답 컬럼, 레지스트리에 없는 컬럼, 예시 행을 보고서로 출력하고 `outputs/api_check_*.json` 에 저장합니다. 이 보고서로 `registry.yaml` 의 `api_params`·`rename` 을 실제 응답에 맞춥니다.
+**Open API 연결 점검**: 아래 명령은 `api_id` 가 있는 등록 데이터셋마다 첫 몇 건만 호출해 성공 여부, 전체 건수, 응답 컬럼, 레지스트리에 없는 컬럼, 예시 행을 보고서로 출력하고 `outputs/checks/api_check_*.json` 에 저장합니다. 이 보고서로 `registry.yaml` 의 `api_params`·`rename` 을 실제 응답에 맞춥니다.
 ```bash
 python -m jeju_agent.cli data check-api
 python -m jeju_agent.cli data check-api --dataset floating_population_emd --param startDate=20240101 --param endDate=20240107

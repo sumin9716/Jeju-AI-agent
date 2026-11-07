@@ -25,7 +25,7 @@ INCLUDE = [
     ".streamlit/config.toml", ".github/workflows/ci.yml",
     "jeju_agent/**", "scripts/**", "tests/**", "scenarios/**", "docs/**",
     "data/catalog/**", "data/samples/**", "data/raw/.gitkeep", "data/cache/.gitkeep",
-    "outputs/reports/.gitkeep", "outputs/charts/.gitkeep", "outputs/traces/.gitkeep",
+    "outputs/reports/.gitkeep", "outputs/charts/.gitkeep", "outputs/traces/.gitkeep", "outputs/checks/.gitkeep",
 ]
 EXCLUDE = ["**/__pycache__/**", "**/*.pyc", "**/.pytest_cache/**", ".env", "**/.DS_Store", "**/*.egg-info/**"]
 
