@@ -300,3 +300,104 @@ datasets:
       avgPrice: 평균가격
       volume: 거래량
     notes: 도매시장 거래 기준. 품목·등급 혼합 평균은 의미가 없으므로 반드시 품목·등급별로 본다.
+
+  - id: public_wifi_ap
+    catalog_no: 720
+    name: 제주 공공와이파이 AP 정보
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*와이파이*AP*.csv;*공공와이파이*.csv;*wifi*.csv;public_wifi*.csv"
+    sample_file: public_wifi_ap_sample.csv
+    update: "2020-09-09 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: AP명, dtype: str, desc: 공공와이파이 AP 이름}
+      - {name: 설치장소, dtype: str, desc: 설치 장소 유형(버스정류장/관광지/공공시설 등)}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 위도, dtype: float}
+      - {name: 경도, dtype: float}
+    rename:
+      apNm: AP명
+      apName: AP명
+      place: 설치장소
+      installPlace: 설치장소
+      emdNm: 읍면동
+      lat: 위도
+      lng: 경도
+      lon: 경도
+    notes: 설치 위치 기준 정보이며 이용량은 별도 데이터(와이파이 사용량, No.743~752)에 있다. 지도 시각화에 적합.
+
+  - id: ev_charging_stations
+    catalog_no: 494
+    name: 전기자동차 충전소 정보
+    category: 인구, 생활
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*충전소*.csv;*충전소*.xlsx;ev_charging*.csv"
+    sample_file: ev_charging_stations_sample.csv
+    update: "2025-09-18 기준"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 충전소명, dtype: str}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 주소, dtype: str}
+      - {name: 충전기유형, dtype: str, desc: 급속/완속}
+      - {name: 충전기수, dtype: int}
+      - {name: 위도, dtype: float}
+      - {name: 경도, dtype: float}
+    rename:
+      stationNm: 충전소명
+      stnNm: 충전소명
+      addr: 주소
+      chargerType: 충전기유형
+      chargerCnt: 충전기수
+      emdNm: 읍면동
+      lat: 위도
+      lng: 경도
+      lon: 경도
+    notes: 충전소 위치·설비 정보이며 실제 이용 이력은 전기자동차 충전 이력(No.136~138) 데이터를 쓴다.
+
+  - id: tourist_accommodations
+    catalog_no: 518
+    name: 관광 숙박업 정보
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*숙박업*.csv;*숙박업*.xlsx;tourist_accommodation*.csv"
+    sample_file: tourist_accommodations_sample.csv
+    update: "2025-09-18 기준"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 업소명, dtype: str}
+      - {name: 업종, dtype: str, desc: 호텔/콘도/휴양펜션/일반숙박 등}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 객실수, dtype: int}
+      - {name: 영업상태, dtype: str}
+      - {name: 위도, dtype: float}
+      - {name: 경도, dtype: float}
+    rename:
+      bizNm: 업소명
+      bizType: 업종
+      roomCnt: 객실수
+      status: 영업상태
+      emdNm: 읍면동
+      lat: 위도
+      lng: 경도
+      lon: 경도
+    notes: 관광진흥법상 등록 숙박업 기준이며 농어촌민박(No.402)·일반 숙박시설은 별도 데이터다.

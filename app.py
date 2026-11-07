@@ -30,6 +30,8 @@ EXAMPLES = [
     "2024년 감귤 등급별 가격 추세를 보여줘",
     "외국인 입도객은 코로나 이후 얼마나 회복됐어?",
     "성산읍 관광지 방문객이 가장 많은 달은 언제야? 보고서로 정리해줘",
+    "전기차 충전소와 관광 숙박업소가 많은 읍면동을 지도로 보여줘",
+    "내가 data/raw 폴더에 넣은 파일을 불러와서 구조를 설명하고 핵심만 요약해줘",
 ]
 
 SOURCE_LABEL = {"api": "🟢 Open API", "file": "🟡 내려받은 파일", "sample": "⚪ 합성 샘플", None: "🔴 사용 불가"}
@@ -158,6 +160,13 @@ with st.sidebar:
         for s in agent.store.status():
             st.markdown(f"- {SOURCE_LABEL[s['preferred']]} **{s['name']}** (No.{s['catalog_no']})")
         st.caption("🟢 Open API: .env 프로젝트 키 + registry.yaml api_id 필요 · 🟡 data/raw 에 내려받은 파일 · ⚪ scripts/make_samples.py 가 만든 합성 샘플")
+        raw_files = agent.store.list_raw_files()
+        st.markdown(f"**data/raw 사용자 파일: {len(raw_files)}개**")
+        for f in raw_files[:8]:
+            st.markdown(f"- 📄 {f['name']} ({f['size_kb']} KB)")
+        if len(raw_files) > 8:
+            st.caption(f"… 외 {len(raw_files) - 8}개")
+        st.caption("제주데이터허브에서 내려받은 CSV/XLSX 를 data/raw 에 넣으면 '파일 이름을 불러와서 분석해줘' 처럼 물어볼 수 있습니다.")
     st.markdown("**예시 질문**")
     for i, q in enumerate(EXAMPLES):
         if st.button(q, key=f"ex_{i}", help="클릭하면 바로 질문합니다"):

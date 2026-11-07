@@ -57,6 +57,26 @@ TOOLS: list[dict] = [
         },
     },
     {
+        "name": "load_file",
+        "description": (
+            "사용자가 제주데이터허브(또는 제주빅데이터센터)에서 내려받아 data/raw 폴더에 넣은 CSV/TSV/TXT/XLSX 파일을 세션 표로 불러온다. "
+            "레지스트리에 없는 데이터(목록의 File 유형 등)는 이 도구로 분석한다. 파일 이름은 일부만 적어도 찾으며, "
+            "숫자(쉼표 포함)·날짜 컬럼을 자동 추정하고 구조 요약을 돌려준다. data/raw 의 파일 목록은 list_datasets 로 볼 수 있다. "
+            "파일이 없으면 사용자에게 허브에서 내려받아 data/raw 에 저장하도록 안내한다."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "file": {"type": "string", "description": "파일 이름 또는 일부 (예: '음식점', '제주특별자치도_클린하우스현황.csv')"},
+                "sheet": {"type": "string", "description": "엑셀 시트 이름 (선택, 기본 첫 시트)"},
+                "table_name": {"type": "string", "description": "세션에서 쓸 표 이름 (선택, 짧은 영문 권장. 기본은 파일 이름에서 생성)"},
+                "max_rows": {"type": "integer", "description": "최대 행 수 제한 (선택)", "minimum": 1},
+            },
+            "required": ["file"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "run_python",
         "description": (
             "pandas 분석 코드를 격리 환경에서 실행한다. 세션의 표는 같은 이름의 변수(DataFrame)와 `tables` 딕셔너리로 접근한다. "
