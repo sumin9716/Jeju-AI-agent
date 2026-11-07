@@ -119,6 +119,7 @@ class DataHubClient:
         max_pages: int = 1000,
         sleep_between_pages: float = 0.1,
         session: requests.Session | None = None,
+        cache_ttl_hours: float = 72,
     ):
         self.project_key = (project_key or "").strip()
         self.base_url = base_url.rstrip("/")
@@ -129,6 +130,7 @@ class DataHubClient:
         self.page_size = page_size
         self.max_pages = max_pages
         self.sleep_between_pages = sleep_between_pages
+        self.cache_ttl_hours = cache_ttl_hours
         self.session = session or requests.Session()
         if session is None:
             from .. import __version__
@@ -319,9 +321,8 @@ class DataHubClient:
         params = render_params(params)
         cache_path = self._cache_path(api_id, params)
         url = self.build_url(api_id)
-        if use_cache and not refresh and cache_path.exists():
-            with open(cache_path, encoding="utf-8") as f:
-                cached = json.load(f)
+        cached = self._read_cache(cache_path) if use_cache and not refresh else None
+        if cached is not None:
             df = pd.DataFrame(cached["rows"])
             return FetchResult(
                 df=df,
@@ -348,7 +349,8 @@ class DataHubClient:
                 break
         truncated = total is not None and len(all_rows) < total
         df = pd.DataFrame(all_rows)
-        if use_cache:
+        # 빈 결과는 저장하지 않는다: 아직 올라오지 않은 기간을 물었다가 나중에 데이터가 생겨도 계속 0건이 나오지 않게.
+        if use_cache and all_rows:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(
@@ -368,6 +370,22 @@ class DataHubClient:
         return FetchResult(
             df=df, total=total, pages=pages, from_cache=False, url=url, truncated=truncated, page_size=first_page_len
         )
+
+    def _read_cache(self, path: Path) -> dict | None:
+        """유효 기간(cache_ttl_hours) 안의 캐시만 돌려준다. 깨진 파일·빈 결과·오래된 파일은 무시한다."""
+        if not path.exists():
+            return None
+        try:
+            with open(path, encoding="utf-8") as f:
+                cached = json.load(f)
+            fetched = datetime.fromisoformat(cached.get("fetched_at", ""))
+        except (OSError, ValueError, TypeError):
+            return None
+        if not cached.get("rows"):
+            return None
+        if self.cache_ttl_hours is not None and (datetime.now() - fetched).total_seconds() > self.cache_ttl_hours * 3600:
+            return None
+        return cached
 
     def test_connection(self, api_id: str, params: dict | None = None) -> dict:
         """첫 페이지만 호출해 연결·인증·응답 형식을 점검한다."""

@@ -41,6 +41,7 @@ class SandboxResult:
     charts: list[dict] = field(default_factory=list)  # {"kind": "plotly"|"image", "path": str, "title": str}
     elapsed: float = 0.0
     truncated: bool = False
+    loaded: list[str] = field(default_factory=list)  # 이번 실행에서 불러온 차트 라이브러리
 
     def to_model_text(self) -> str:
         """LLM 에게 돌려줄 요약 문자열."""
@@ -128,6 +129,7 @@ def run_code(
             result_kind=manifest.get("result_kind", "none"),
             charts=manifest.get("charts", []),
             elapsed=time.time() - started,
+            loaded=list(manifest.get("loaded", [])),
         )
         if len(res.stdout) > MAX_STDOUT_CHARS:
             res.stdout = res.stdout[:MAX_STDOUT_CHARS]

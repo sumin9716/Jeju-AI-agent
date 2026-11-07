@@ -42,9 +42,11 @@ footer { color:#777; font-size:.85rem; margin-top: 40px; border-top:1px solid #e
 """
 
 
-def _slug(text: str, limit: int = 30) -> str:
-    text = re.sub(r"[\\/:*?\"<>|\s]+", "_", text.strip())
-    return text[:limit].strip("_") or "report"
+def _slug(text: str, limit: int = 40) -> str:
+    """보고서 파일 이름: 괄호·특수문자를 밑줄로 바꾸고 길이를 제한한다 (괄호 중간에서 잘리지 않게)."""
+    text = re.sub(r"[\\/:*?\"<>|()\[\]{}\s]+", "_", text.strip())
+    text = re.sub(r"_+", "_", text)
+    return text[:limit].strip("_·.") or "report"
 
 
 def _md_to_html(text: str) -> str:

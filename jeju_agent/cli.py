@@ -19,6 +19,7 @@ import json
 import os
 import runpy
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -101,40 +102,37 @@ def _make_agent(args: argparse.Namespace):
 
 
 def _console_events(quiet: bool):
-    from .agent import AgentEvent
+    from .progress import ConsoleProgress
 
-    def on_event(ev: AgentEvent) -> None:
-        if ev.type == "text" and not quiet:
-            print(ev.data["delta"], end="", flush=True)
-        elif ev.type == "tool_start":
-            print(f"\n▶ 단계 {ev.data['step']}: {ev.data['summary']}", flush=True)
-        elif ev.type == "tool_end":
-            icon = "✔" if ev.data.get("ok") else "✖"
-            kind = ev.data.get("kind")
-            extra = ""
-            if kind == "chart":
-                extra = f" → 차트 {ev.data['payload']['chart'].id}: {ev.data['payload']['chart'].path}"
-            elif kind == "report":
-                extra = f" → {ev.data['payload']['report'].html_path}"
-            elif not ev.data.get("ok"):
-                extra = " → " + ev.data.get("result_text", "")[:160].replace("\n", " ")
-            print(f"  {icon} {ev.data.get('elapsed', 0)}초{extra}", flush=True)
-        elif ev.type == "error":
-            print(f"\n[오류] {ev.data['message']}", flush=True)
+    return ConsoleProgress(quiet=quiet)
 
-    return on_event
+
+def _run_turn(agent, question: str, quiet: bool = False):
+    """질문 한 번을 실행한다. Ctrl+C 로 멈추면 None 을 돌려준다 (대화 기록은 질문 전 상태로 되돌린다)."""
+    progress = _console_events(quiet)
+    started = time.monotonic()
+    try:
+        result = agent.run(question, on_event=progress)
+    except KeyboardInterrupt:
+        progress.close()
+        _print("\n중단했습니다 (Ctrl+C). 대화 기록은 이 질문 전 상태로 돌아갔습니다.")
+        return None, time.monotonic() - started
+    progress.close()
+    return result, time.monotonic() - started
 
 
 def cmd_ask(args: argparse.Namespace) -> int:
     agent = _make_agent(args)
-    result = agent.run(args.question, on_event=_console_events(quiet=False))
-    _print("\n")
-    _print("=" * 70)
-    _print(result.text)
-    _print("=" * 70)
+    result, elapsed = _run_turn(agent, args.question)
+    if result is None:
+        return 130
     from .agent import usage_summary
 
-    _print(f"단계 {len(result.steps)}개 · 토큰 {usage_summary(result.usage)}")
+    # 답은 실행 중에 이미 화면에 흘려 보냈으므로 다시 출력하지 않고 요약만 덧붙인다.
+    if result.error:
+        _print(f"\n[오류] {result.error}")
+    _print("\n" + "─" * 70)
+    _print(f"단계 {len(result.steps)}개 · 총 {elapsed:.0f}초 · 토큰 {usage_summary(result.usage)}")
     for r in agent.session.reports:
         _print(f"보고서: {r.html_path}")
     return 1 if result.error else 0
@@ -157,9 +155,12 @@ def cmd_chat(args: argparse.Namespace) -> int:
             _print("새 대화를 시작합니다.")
             continue
         print("🍊 > ", end="", flush=True)
-        result = agent.run(q, on_event=_console_events(quiet=False))
+        result, elapsed = _run_turn(agent, q)
+        if result is None:
+            continue
         if result.steps:
             _print("\n" + result.text)
+        _print(f"(총 {elapsed:.0f}초)")
     return 0
 
 
@@ -282,9 +283,11 @@ def cmd_scenario_run(args: argparse.Namespace) -> int:
         outputs = []
         for i, q in enumerate(spec.get("questions", []), 1):
             _print(f"\n[{i}] 🧑 {q}")
-            result = agent.run(q, on_event=_console_events(quiet=args.quiet))
+            result, elapsed = _run_turn(agent, q, quiet=args.quiet)
+            if result is None:
+                return 130
             _print("\n" + result.text if args.quiet else "")
-            outputs.append({"question": q, "answer": result.text, "steps": len(result.steps), "error": result.error, "usage": result.usage})
+            outputs.append({"question": q, "answer": result.text, "steps": len(result.steps), "error": result.error, "usage": result.usage, "seconds": round(elapsed, 1)})
             if result.error:
                 exit_code = 1
         summary = {
