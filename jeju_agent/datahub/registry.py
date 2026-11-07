@@ -30,6 +30,7 @@ class DatasetSpec:
     api_params: dict = field(default_factory=dict)
     date_params: list[str] = field(default_factory=list)  # 기간 질의 변수 이름 [시작, 끝]
     api_paging: dict = field(default_factory=dict)  # 페이지 변수 재정의 {page, size, page_size, max_pages}
+    filter_params: dict = field(default_factory=dict)  # 거르기 질의 변수 {변수: 설명}
     file_glob: str = ""
     sample_file: str = ""
     update: str = ""
@@ -111,6 +112,7 @@ def load_registry(path: Path | str = REGISTRY_FILE) -> Registry:
         item["api_params"] = item.get("api_params") or {}
         item["date_params"] = list(item.get("date_params") or [])
         item["api_paging"] = item.get("api_paging") or {}
+        item["filter_params"] = item.get("filter_params") or {}
         item["rename"] = item.get("rename") or {}
         specs.append(DatasetSpec(**item))
     return Registry(specs)

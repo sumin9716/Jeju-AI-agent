@@ -216,6 +216,35 @@ def normalize_dataframe(df: pd.DataFrame, spec: DatasetSpec) -> pd.DataFrame:
     return df
 
 
+def _parse_ymd(value) -> date | None:
+    text = re.sub(r"[^0-9]", "", str(value or ""))
+    if len(text) != 8:
+        return None
+    try:
+        return datetime.strptime(text, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
+def _coverage_notes(df: pd.DataFrame, spec: DatasetSpec, params: dict) -> list[str]:
+    """요청한 기간과 실제로 받은 데이터의 날짜 범위가 다르면 알린다 (허브 갱신 지연 등)."""
+    if len(spec.date_params) < 2:
+        return []
+    date_col = next((c.name for c in spec.columns if c.dtype == "date" and c.name in df.columns), None)
+    if date_col is None or not pd.api.types.is_datetime64_any_dtype(df[date_col]) or df[date_col].isna().all():
+        return []
+    first, last = df[date_col].min().date(), df[date_col].max().date()
+    want_start, want_end = _parse_ymd(params.get(spec.date_params[0])), _parse_ymd(params.get(spec.date_params[1]))
+    notes = [f"실제 데이터 기간: {first.isoformat()} ~ {last.isoformat()}"]
+    if want_end and last < want_end:
+        notes.append(
+            f"⚠️ 요청한 끝 날짜({want_end.isoformat()})보다 데이터가 일찍 끝납니다. 허브 갱신이 늦어서일 수 있으니 답변에 실제 기간을 밝히세요."
+        )
+    if want_start and first > want_start:
+        notes.append(f"요청한 시작 날짜({want_start.isoformat()})보다 데이터가 늦게 시작합니다.")
+    return notes
+
+
 class DataStore:
     def __init__(
         self,
@@ -367,6 +396,8 @@ class DataStore:
             notes.append(f"질의 변수: {shown}")
         if df.empty:
             notes.append("⚠️ 이 조건에 해당하는 데이터가 0건입니다. 기간을 앞당기거나 넓혀 다시 요청하세요.")
+        else:
+            notes.extend(_coverage_notes(df, spec, merged))
         if res.truncated:
             notes.append(
                 f"⚠️ 전체 {res.total:,}건 중 {len(df):,}건만 수집했습니다(페이지 한도). 기간을 나눠 요청하세요."
