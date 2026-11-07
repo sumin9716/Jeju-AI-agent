@@ -93,3 +93,20 @@ def test_store_loads_samples_and_status():
         store.load("없는데이터")
     with pytest.raises(DataHubError):
         store.load("daily_weather", prefer="api")
+
+
+def test_client_masks_project_key_in_errors():
+    class FakeResp:
+        status_code, text = 500, "boom key=SECRETKEY123"
+
+        def json(self):
+            raise ValueError("no json")
+
+    class FakeSession:
+        def get(self, url, params=None, timeout=None):
+            return FakeResp()
+
+    c = DataHubClient(project_key="SECRETKEY123", session=FakeSession(), sleep_between_pages=0)
+    with pytest.raises(DataHubError) as ei:
+        next(c.iter_pages("API"))
+    assert "SECRETKEY123" not in str(ei.value) and "{PROJECT_KEY}" in str(ei.value)

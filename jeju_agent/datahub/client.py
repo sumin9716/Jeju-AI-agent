@@ -105,6 +105,10 @@ class DataHubClient:
     def configured(self) -> bool:
         return bool(self.project_key)
 
+    def _mask(self, text: str) -> str:
+        """오류 메시지·로그에 프로젝트 키가 남지 않도록 가린다."""
+        return text.replace(self.project_key, "{PROJECT_KEY}") if self.project_key else text
+
     def build_url(self, api_id: str) -> str:
         if not self.configured:
             raise DataHubError("JEJUDATAHUB_PROJECT_KEY 가 설정되지 않았습니다 (.env 참고).")
@@ -186,17 +190,19 @@ class DataHubClient:
             try:
                 resp = self.session.get(url, params=q, timeout=self.timeout)
             except requests.RequestException as e:  # 네트워크 단절, DNS 실패 등
-                raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {e}") from e
+                raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {self._mask(str(e))}") from e
             if resp.status_code in (401, 403):
                 raise DataHubError(f"인증 실패({resp.status_code}): 프로젝트 키 또는 API 신청 상태를 확인하세요.")
             if resp.status_code == 404:
                 raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.")
             if resp.status_code >= 400:
-                raise DataHubError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+                raise DataHubError(f"HTTP {resp.status_code}: {self._mask(resp.text[:300])}")
             try:
                 payload = resp.json()
             except ValueError as e:
-                raise DataHubError(f"JSON 이 아닌 응답: {resp.text[:200]}") from e
+                snippet = re.sub(r"<[^>]+>", " ", resp.text[:600])
+                snippet = re.sub(r"\s+", " ", snippet).strip()[:300]
+                raise DataHubError(f"JSON 이 아닌 응답: {self._mask(snippet)}") from e
             rows, total = self.parse_payload(payload)
             yield page, rows, total
             fetched += len(rows)

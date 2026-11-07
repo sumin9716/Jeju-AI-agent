@@ -21,7 +21,7 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
+    api_id: "Daaa1t3at3tt8a8DD3t55538t35Dab1t"
     api_params: {}
     file_glob: "*유동인구*.csv;*유동인구*.xlsx;floating_population*.csv"
     sample_file: floating_population_emd_sample.csv
