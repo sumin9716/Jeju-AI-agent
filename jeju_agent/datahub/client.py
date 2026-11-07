@@ -13,11 +13,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
@@ -36,6 +37,14 @@ class DataHubError(RuntimeError):
     """Open API 호출 실패 (설정 누락, 네트워크, 인증, 응답 형식 오류)."""
 
 
+class PageSizeTooLarge(DataHubError):
+    """서버가 쪽당 건수(limit) 상한을 넘었다고 거부함. max_size 는 서버가 알려준 최대값."""
+
+    def __init__(self, message: str, max_size: int):
+        super().__init__(message)
+        self.max_size = max_size
+
+
 @dataclass
 class FetchResult:
     df: pd.DataFrame
@@ -43,6 +52,28 @@ class FetchResult:
     pages: int
     from_cache: bool
     url: str
+    truncated: bool = False
+    page_size: int | None = None
+
+
+@dataclass
+class PageResult:
+    rows: list[dict]
+    total: int | None
+    meta: dict = field(default_factory=dict)  # 목록이 아닌 최상위 응답 필드 (totCnt, hasMore 등)
+
+
+def hub_error_message(text: str) -> str:
+    """허브 오류 응답(이스케이프된 JSON 이 문자열로 감싸진 경우 포함)에서 사람이 읽을 메시지를 꺼낸다."""
+    unescaped = (text or "").replace('\\"', '"')
+    m = re.search(r'"message"\s*:\s*"([^"]+)"', unescaped)
+    if m:
+        return m.group(1)
+    field_m = re.search(r"on field '([^']+)': rejected value \[([^\]]*)\]", unescaped)
+    defaults = re.findall(r"default message \[([^\]]+)\]", unescaped)
+    if field_m and defaults:
+        return f"'{field_m.group(1)}' 값 {field_m.group(2)} 거부: {defaults[-1]}"
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()[:300]
 
 
 def _render_param(value: Any, today: date | None = None) -> Any:
@@ -85,7 +116,7 @@ class DataHubClient:
         page_param: str = "number",
         size_param: str = "limit",
         page_size: int = 100,
-        max_pages: int = 300,
+        max_pages: int = 1000,
         sleep_between_pages: float = 0.1,
         session: requests.Session | None = None,
     ):
@@ -113,6 +144,17 @@ class DataHubClient:
     @property
     def configured(self) -> bool:
         return bool(self.project_key)
+
+    def for_paging(self, paging: dict | None) -> "DataHubClient":
+        """레지스트리의 api_paging(page/size/page_size/max_pages) 설정을 적용한 사본."""
+        if not paging:
+            return self
+        clone = copy.copy(self)
+        clone.page_param = str(paging.get("page", self.page_param))
+        clone.size_param = str(paging.get("size", self.size_param))
+        clone.page_size = int(paging.get("page_size", self.page_size))
+        clone.max_pages = int(paging.get("max_pages", self.max_pages))
+        return clone
 
     def _mask(self, text: str) -> str:
         """오류 메시지·로그에 프로젝트 키가 남지 않도록 가린다."""
@@ -187,37 +229,79 @@ class DataHubClient:
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
         return self.cache_dir / f"{api_id[:12]}_{digest}.json"
 
-    def iter_pages(self, api_id: str, params: dict | None = None) -> Iterator[tuple[int, list[dict], int | None]]:
+    def fetch_page(self, api_id: str, params: dict | None = None, page: int = 1, size: int | None = None) -> PageResult:
+        """한 페이지를 호출한다. 오류는 원인을 알 수 있는 한국어 메시지의 DataHubError 로 바꾼다."""
         url = self.build_url(api_id)
+        q = dict(params or {})
+        q[self.page_param] = page
+        q[self.size_param] = size or self.page_size
+        try:
+            resp = self.session.get(url, params=q, timeout=self.timeout)
+        except requests.RequestException as e:  # 네트워크 단절, DNS 실패 등
+            raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {self._mask(str(e))}") from e
+        if resp.status_code in (401, 403):
+            raise DataHubError(
+                f"인증 실패({resp.status_code}): 프로젝트 키 또는 API 활용 신청 상태를 확인하세요. "
+                f"허브 메시지: {self._mask(hub_error_message(resp.text))}"
+            )
+        if resp.status_code == 404:
+            raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.")
+        if resp.status_code >= 400:
+            message = f"허브가 요청을 거부했습니다(HTTP {resp.status_code}): {self._mask(hub_error_message(resp.text))}"
+            cap = re.search(r"less than or equal to (\d+)", resp.text or "")
+            if cap and (self.size_param in (resp.text or "")) and int(cap.group(1)) < int(q[self.size_param]):
+                raise PageSizeTooLarge(message, max_size=int(cap.group(1)))
+            raise DataHubError(message)
+        try:
+            payload = resp.json()
+        except ValueError as e:
+            snippet = re.sub(r"<[^>]+>", " ", resp.text[:600])
+            snippet = re.sub(r"\s+", " ", snippet).strip()[:300]
+            raise DataHubError(f"JSON 이 아닌 응답: {self._mask(snippet)}") from e
+        rows, total = self.parse_payload(payload)
+        meta = {k: v for k, v in payload.items() if not isinstance(v, (list, dict))} if isinstance(payload, dict) else {}
+        return PageResult(rows=rows, total=total, meta=meta)
+
+    def iter_pages(self, api_id: str, params: dict | None = None) -> Iterator[tuple[int, list[dict], int | None]]:
+        """페이지를 차례로 돌려준다.
+
+        - 전체 건수(totCnt 등)를 알면 그만큼 모일 때까지 읽는다.
+        - 서버가 요청한 페이지 크기보다 적게 주면(상한) 그 크기를 감지해 다음 페이지부터 그 크기로 요청한다.
+        - 페이지 변수가 무시되어 같은 페이지가 반복되면 오류로 멈춘다(중복 수집 방지).
+        """
         params = dict(params or {})
+        size = self.page_size
         page = 1
         fetched = 0
+        prev_sig: tuple | None = None
         while page <= self.max_pages:
-            q = dict(params)
-            q[self.page_param] = page
-            q[self.size_param] = self.page_size
             try:
-                resp = self.session.get(url, params=q, timeout=self.timeout)
-            except requests.RequestException as e:  # 네트워크 단절, DNS 실패 등
-                raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {self._mask(str(e))}") from e
-            if resp.status_code in (401, 403):
-                raise DataHubError(f"인증 실패({resp.status_code}): 프로젝트 키 또는 API 신청 상태를 확인하세요.")
-            if resp.status_code == 404:
-                raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.")
-            if resp.status_code >= 400:
-                raise DataHubError(f"HTTP {resp.status_code}: {self._mask(resp.text[:300])}")
-            try:
-                payload = resp.json()
-            except ValueError as e:
-                snippet = re.sub(r"<[^>]+>", " ", resp.text[:600])
-                snippet = re.sub(r"\s+", " ", snippet).strip()[:300]
-                raise DataHubError(f"JSON 이 아닌 응답: {self._mask(snippet)}") from e
-            rows, total = self.parse_payload(payload)
-            yield page, rows, total
+                res = self.fetch_page(api_id, params, page=page, size=size)
+            except PageSizeTooLarge as e:
+                if page != 1 or e.max_size >= size or e.max_size < 1:
+                    raise
+                size = e.max_size  # 서버가 알려준 쪽당 최대 건수로 다시 요청
+                res = self.fetch_page(api_id, params, page=page, size=size)
+            rows = res.rows
+            if rows:
+                sig = (len(rows), json.dumps(rows[0], sort_keys=True, ensure_ascii=False, default=str),
+                       json.dumps(rows[-1], sort_keys=True, ensure_ascii=False, default=str))
+                if prev_sig is not None and sig == prev_sig:
+                    raise DataHubError(
+                        f"페이지 변수({self.page_param})가 무시되어 같은 페이지가 반복됩니다. "
+                        "registry.yaml 의 api_paging 설정을 확인하세요."
+                    )
+                prev_sig = sig
+            yield page, rows, res.total
             fetched += len(rows)
-            if not rows or len(rows) < self.page_size:
+            if not rows:
                 break
-            if total is not None and fetched >= total:
+            if res.total is not None:
+                if fetched >= res.total:
+                    break
+                if page == 1 and len(rows) < size:
+                    size = len(rows)  # 서버 페이지 상한 감지
+            elif len(rows) < size:
                 break
             page += 1
             if self.sleep_between_pages:
@@ -239,18 +323,30 @@ class DataHubClient:
             with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
             df = pd.DataFrame(cached["rows"])
-            return FetchResult(df=df, total=cached.get("total"), pages=cached.get("pages", 0), from_cache=True, url=url)
+            return FetchResult(
+                df=df,
+                total=cached.get("total"),
+                pages=cached.get("pages", 0),
+                from_cache=True,
+                url=url,
+                truncated=bool(cached.get("truncated", False)),
+                page_size=cached.get("page_size"),
+            )
 
         all_rows: list[dict] = []
         total: int | None = None
         pages = 0
+        first_page_len: int | None = None
         for page, rows, page_total in self.iter_pages(api_id, params):
             pages = page
+            if first_page_len is None:
+                first_page_len = len(rows)
             total = page_total if page_total is not None else total
             all_rows.extend(rows)
             if max_rows and len(all_rows) >= max_rows:
                 all_rows = all_rows[:max_rows]
                 break
+        truncated = total is not None and len(all_rows) < total
         df = pd.DataFrame(all_rows)
         if use_cache:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -262,15 +358,19 @@ class DataHubClient:
                         "fetched_at": datetime.now().isoformat(timespec="seconds"),
                         "total": total,
                         "pages": pages,
+                        "truncated": truncated,
+                        "page_size": first_page_len,
                         "rows": all_rows,
                     },
                     f,
                     ensure_ascii=False,
                 )
-        return FetchResult(df=df, total=total, pages=pages, from_cache=False, url=url)
+        return FetchResult(
+            df=df, total=total, pages=pages, from_cache=False, url=url, truncated=truncated, page_size=first_page_len
+        )
 
     def test_connection(self, api_id: str, params: dict | None = None) -> dict:
         """첫 페이지만 호출해 연결·인증·응답 형식을 점검한다."""
-        gen = self.iter_pages(api_id, render_params(params))
-        page, rows, total = next(gen)
-        return {"ok": True, "rows_in_first_page": len(rows), "total": total, "columns": list(rows[0].keys()) if rows else []}
+        res = self.fetch_page(api_id, render_params(params), page=1, size=min(self.page_size, 100))
+        rows = res.rows
+        return {"ok": True, "rows_in_first_page": len(rows), "total": res.total, "columns": list(rows[0].keys()) if rows else []}

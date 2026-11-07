@@ -24,7 +24,7 @@ class FakeSession:
         self.calls.append((url, dict(params or {})))
         if "/BAD/" in url:
             return FakeResp(403, {})
-        return FakeResp(200, {"totCnt": "57", "data": [{"baseDate": "20240101", "emdNm": "애월읍", "visitPop": 10, "newCol": "x" * 200}]})
+        return FakeResp(200, {"totCnt": "57", "data": [{"baseDate": "20240101", "emd": "애월읍", "visitPop": 10, "newCol": "x" * 200}]})
 
 
 def test_check_apis_statuses_and_report(tmp_path):
@@ -38,7 +38,7 @@ def test_check_apis_statuses_and_report(tmp_path):
     results = check_apis(client, [good, bad, none], extra_params={"endDate": "20240107"}, rows=2)
     assert [r.status for r in results] == ["ok", "error", "no_api_id"]
     ok = results[0]
-    assert ok.total == 57 and ok.columns == ["baseDate", "emdNm", "visitPop", "newCol"]
+    assert ok.total == 57 and ok.columns == ["baseDate", "emd", "visitPop", "newCol"]
     assert ok.unknown_columns == ["newCol"] and len(ok.sample[0]["newCol"]) == 80
     assert ok.params["endDate"] == "20240107" and ok.params["startDate"].isdigit()
     assert sess.calls[0][1]["limit"] == 2 and len(sess.calls) == 2
