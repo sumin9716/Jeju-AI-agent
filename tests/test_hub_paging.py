@@ -191,3 +191,23 @@ def test_deep_check_flags_ignored_page_param(tmp_path):
     spec = load_registry().get("floating_population_emd")
     out = deep_check(_client(hub, tmp_path), spec, dict(WIDE), today=TODAY)
     assert out["paging"].startswith("실패")
+
+
+def test_loader_filter_params_and_coverage_notes(tmp_path):
+    hub = FakeHub(days=60, per_day=4, lag=40)
+    latest = TODAY - timedelta(days=40)
+    params = {"startDate": (latest - timedelta(days=9)).strftime("%Y%m%d"), "endDate": TODAY.strftime("%Y%m%d"), "emd": "동1"}
+    ds = _store(hub, tmp_path).load("floating_population_emd", params=params)
+    assert ds.rows == 10 and set(ds.df["읍면동"]) == {"동1"}  # 거르기 변수 적용
+    assert any(f"실제 데이터 기간: {(latest - timedelta(days=9)).isoformat()} ~ {latest.isoformat()}" in n for n in ds.notes)
+    assert any("일찍 끝납니다" in n for n in ds.notes)
+
+
+def test_registry_filter_params_reach_system_prompt():
+    from jeju_agent.agent import Agent, ScriptedBackend
+    from jeju_agent.config import Settings
+
+    spec = load_registry().get("floating_population_emd")
+    assert set(spec.filter_params) == {"emd", "city", "gender", "ageGroup"}
+    text = Agent(settings=Settings(), backend=ScriptedBackend([])).system_blocks()[0]["text"]
+    assert "거르기 변수" in text and "emd=" in text and "startDate" in text

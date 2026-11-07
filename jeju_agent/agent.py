@@ -214,6 +214,9 @@ class Agent:
                 lines.append(
                     f"  - Open API 기간 변수: {a}, {b} (YYYYMMDD). 예: load_dataset params={{\"{a}\": \"20240101\", \"{b}\": \"20240131\"}}"
                 )
+            if spec.filter_params:
+                desc = "; ".join(f"{k}={v}" for k, v in spec.filter_params.items())
+                lines.append(f"  - 거르기 변수(params 에 함께 넣으면 필요한 행만 받아 빠르다): {desc}")
             if spec.notes:
                 lines.append(f"  - 주의: {spec.notes}")
         lines.append("")
