@@ -304,7 +304,17 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _configure_console() -> None:
+    """윈도우 cmd(cp949/cp1252) 콘솔에서 한글·기호 출력이 UnicodeEncodeError 로 죽지 않게 한다."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):  # 리다이렉션된 스트림 등
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _configure_console()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.func(args) or 0)
