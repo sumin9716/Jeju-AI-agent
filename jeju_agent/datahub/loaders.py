@@ -99,27 +99,98 @@ def describe_dataframe(df: pd.DataFrame, preview_rows: int = 5, max_cols: int = 
     return "\n".join(lines)
 
 
-def read_table_file(path: Path) -> pd.DataFrame:
-    """CSV/XLSX 를 인코딩 자동 판별로 읽는다."""
+RAW_EXTENSIONS = (".csv", ".tsv", ".txt", ".xlsx", ".xlsm", ".xls")
+DATE_HINTS = ("날짜", "일자", "일시", "연월", "년월", "기준일", "기준년월", "date", "ymd", "yyyymm")
+
+
+def _mostly_unnamed(df: pd.DataFrame) -> bool:
+    cols = [str(c) for c in df.columns]
+    return len(cols) > 1 and sum(c.startswith("Unnamed") for c in cols) >= len(cols) / 2
+
+
+def read_table_file(path: Path, sheet: str | int | None = None, header: int = 0) -> pd.DataFrame:
+    """CSV/TSV/TXT/XLSX 를 인코딩 자동 판별로 읽는다. 제목 행 때문에 열 이름이 비면 한 줄 아래를 머리글로 다시 읽는다."""
     suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xlsm", ".xls"):
-        return pd.read_excel(path, engine="openpyxl")
+        df = pd.read_excel(path, engine="openpyxl", sheet_name=0 if sheet is None else sheet, header=header)
+        if _mostly_unnamed(df) and header == 0:
+            return read_table_file(path, sheet=sheet, header=1)
+        return df
     last_err: Exception | None = None
     for enc in ENCODINGS:
         try:
-            return pd.read_csv(path, encoding=enc, low_memory=False)
+            if suffix == ".tsv":
+                df = pd.read_csv(path, encoding=enc, sep="\t", low_memory=False, header=header)
+            elif suffix == ".txt":
+                df = pd.read_csv(path, encoding=enc, sep=None, engine="python", header=header)
+            else:
+                df = pd.read_csv(path, encoding=enc, low_memory=False, header=header)
+            if _mostly_unnamed(df) and header == 0:
+                return read_table_file(path, sheet=sheet, header=1)
+            return df
         except UnicodeDecodeError as e:
             last_err = e
             continue
     raise ValueError(f"인코딩을 판별하지 못했습니다: {path} ({last_err})")
 
 
+def sanitize_table_name(stem: str) -> str:
+    """파일 이름을 파이썬 변수로 쓸 수 있는 표 이름으로 바꾼다 (한글 허용)."""
+    name = re.sub(r"[^0-9A-Za-z_가-힣]+", "_", str(stem)).strip("_")
+    if not name:
+        name = "table"
+    if name[0].isdigit():
+        name = "t_" + name
+    return name[:60]
+
+
+def infer_types(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """스키마를 모르는 파일의 문자열 컬럼 중 숫자(쉼표 포함)·날짜로 보이는 것을 변환한다."""
+    notes: list[str] = []
+    df = df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    for col in df.columns:
+        s = df[col]
+        is_text = s.dtype == object or pd.api.types.is_string_dtype(s)
+        # 정수로 읽힌 YYYYMMDD / YYYYMM 날짜 (예: 20200616, 202401)
+        if not is_text and pd.api.types.is_integer_dtype(s) and any(h in col.lower() for h in DATE_HINTS):
+            vals = s.dropna()
+            if not vals.empty and (vals.between(19000101, 21001231).all() or vals.between(190001, 210012).all()):
+                parsed = _coerce_date(s)
+                if parsed.notna().sum() >= 0.9 * len(vals):
+                    df[col] = parsed
+                    notes.append(f"'{col}' → 날짜")
+            continue
+        if not is_text:
+            continue
+        text = s.dropna().astype(str).str.strip()
+        text = text[(text != "") & (text.str.lower() != "nan")]
+        if text.empty:
+            continue
+        sample = text.head(3000)
+        # 날짜 힌트가 있는 열은 숫자(YYYYMMDD)로 보여도 날짜를 먼저 시도한다.
+        if any(h in col.lower() for h in DATE_HINTS):
+            parsed = _coerce_date(s)
+            if parsed.notna().sum() >= 0.9 * len(text):
+                df[col] = parsed
+                notes.append(f"'{col}' → 날짜")
+                continue
+        if sample.str.fullmatch(r"[-+]?\d{1,3}(,\d{3})+(\.\d+)?|[-+]?\d+(\.\d+)?").mean() >= 0.95:
+            cleaned = s.astype(str).str.replace(",", "", regex=False).str.strip().replace({"": None, "nan": None, "None": None})
+            df[col] = pd.to_numeric(cleaned, errors="coerce")
+            notes.append(f"'{col}' → 숫자")
+    return df, notes
+
+
 def _coerce_date(series: pd.Series) -> pd.Series:
-    s = series.astype(str).str.strip()
-    digits = s.str.fullmatch(r"\d{8}")
-    if digits.fillna(False).all():
+    s = series.astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+    s = s.replace({"": None, "nan": None, "None": None, "NaT": None, "<NA>": None})
+    valid = s.dropna()
+    if not valid.empty and valid.str.fullmatch(r"\d{8}").all():
         return pd.to_datetime(s, format="%Y%m%d", errors="coerce")
-    return pd.to_datetime(s.replace({"": None, "nan": None, "None": None}), errors="coerce")
+    if not valid.empty and valid.str.fullmatch(r"\d{6}").all():
+        return pd.to_datetime(s, format="%Y%m", errors="coerce")
+    return pd.to_datetime(s, errors="coerce")
 
 
 def normalize_dataframe(df: pd.DataFrame, spec: DatasetSpec) -> pd.DataFrame:
@@ -290,6 +361,102 @@ class DataStore:
             is_synthetic=False,
             spec=spec,
             notes=[f"파일 {len(paths)}개 병합"] if len(paths) > 1 else [],
+        )
+
+    # ------------------------------------------------------------------ data/raw 임의 파일
+    def list_raw_files(self) -> list[dict]:
+        files = []
+        if not self.raw_dir.exists():
+            return files
+        for p in sorted(self.raw_dir.rglob("*")):
+            if p.is_file() and p.suffix.lower() in RAW_EXTENSIONS and not p.name.startswith("."):
+                st = p.stat()
+                files.append(
+                    {
+                        "name": p.relative_to(self.raw_dir).as_posix(),
+                        "size_kb": round(st.st_size / 1024, 1),
+                        "modified": datetime.fromtimestamp(st.st_mtime).isoformat(timespec="minutes"),
+                    }
+                )
+        return files
+
+    def resolve_raw_path(self, name: str) -> Path:
+        """data/raw 안에서 파일을 찾는다 (정확한 이름 → 확장자 생략 → 부분 일치 순)."""
+        root = self.raw_dir.resolve()
+        name = str(name).strip()
+        if not name:
+            raise FileNotFoundError("파일 이름이 비어 있습니다.")
+        candidate = (root / name).resolve()
+        if not candidate.is_relative_to(root):
+            raise PermissionError("data/raw 폴더 밖의 파일은 읽을 수 없습니다.")
+        if candidate.is_file():
+            return candidate
+        files = [root / f["name"] for f in self.list_raw_files()]
+        wanted = Path(name).stem.lower()
+        exact = [p for p in files if p.stem.lower() == wanted or p.name.lower() == name.lower()]
+        if len(exact) == 1:
+            return exact[0]
+        partial = [p for p in files if wanted and wanted in p.name.lower()]
+        if len(partial) == 1:
+            return partial[0]
+        if len(partial) > 1:
+            raise FileNotFoundError(
+                f"'{name}' 에 해당하는 파일이 여러 개입니다: {', '.join(p.name for p in partial[:10])}. 정확한 이름을 지정하세요."
+            )
+        available = ", ".join(f["name"] for f in self.list_raw_files()[:20]) or "(없음)"
+        raise FileNotFoundError(f"data/raw 에 '{name}' 파일이 없습니다. 현재 파일: {available}")
+
+    def load_file(
+        self,
+        name: str,
+        sheet: str | None = None,
+        table_name: str | None = None,
+        max_rows: int | None = None,
+    ) -> LoadedDataset:
+        """사용자가 data/raw 에 넣은 임의의 CSV/TSV/TXT/XLSX 를 불러온다 (스키마 자동 추정)."""
+        path = self.resolve_raw_path(name)
+        notes: list[str] = []
+        if path.suffix.lower() in (".xlsx", ".xlsm", ".xls"):
+            sheets = pd.ExcelFile(path, engine="openpyxl").sheet_names
+            use: str | int
+            if sheet is None:
+                use = 0
+            elif sheet in sheets:
+                use = sheet
+            else:
+                raise ValueError(f"시트 '{sheet}' 이(가) 없습니다. 시트 목록: {sheets}")
+            df = read_table_file(path, sheet=use)
+            if len(sheets) > 1:
+                notes.append(f"시트 {len(sheets)}개 중 '{sheets[0] if use == 0 else use}' 사용 (다른 시트: {', '.join(x for x in sheets if x != use)[:200]})")
+        else:
+            df = read_table_file(path)
+        df, type_notes = infer_types(df)
+        if type_notes:
+            notes.append("자동 형 변환: " + ", ".join(type_notes[:12]))
+        if max_rows:
+            df = df.head(max_rows)
+        tid = sanitize_table_name(table_name or path.stem)
+        spec = DatasetSpec(
+            id=tid,
+            name=path.name,
+            access="file",
+            provider="제주데이터허브 (사용자 다운로드 파일)",
+            source_url="https://www.jejudatahub.net",
+            file_glob=path.name,
+            update="파일 수정 시각 기준",
+            license="제주데이터허브 해당 데이터 상세 페이지의 이용조건을 따름 (출처 표시)",
+            notes="사용자가 내려받아 data/raw 에 저장한 파일. 수집 기간·단위·주의사항은 허브 데이터 상세 페이지에서 확인한다.",
+        )
+        return LoadedDataset(
+            id=tid,
+            name=path.name,
+            df=df,
+            provenance="file",
+            source=str(path),
+            fetched_at=datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds"),
+            is_synthetic=False,
+            spec=spec,
+            notes=notes,
         )
 
     def _load_sample(self, spec: DatasetSpec, max_rows: int | None) -> LoadedDataset:

@@ -256,6 +256,74 @@ def make_agri() -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["날짜", "품목", "품종", "등급", "평균가격", "거래량"])
 
 
+def _emd_lookup() -> dict:
+    return {e[0]: e for e in EMD}
+
+
+def make_wifi() -> pd.DataFrame:
+    places = ["버스정류장", "관광지", "공공시설", "해수욕장", "시장", "공원", "항만", "주민센터"]
+    rows = []
+    for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, lat, lon in EMD:
+        n = int(10 + base_res / 4000 + base_visit / 1500 * tourism)
+        for k in range(n):
+            place = str(rng.choice(places, p=[0.3, 0.2 * tourism / 1.0 if tourism else 0.05, 0.15, 0.1, 0.05, 0.1, 0.05, 0.05] / np.sum([0.3, 0.2 * tourism / 1.0 if tourism else 0.05, 0.15, 0.1, 0.05, 0.1, 0.05, 0.05])))
+            rows.append(
+                {
+                    "AP명": f"{emd}_{place}_{k + 1:02d}",
+                    "설치장소": place,
+                    "시군구": sgg,
+                    "읍면동": emd,
+                    "위도": round(lat + rng.normal(0, 0.015), 5),
+                    "경도": round(lon + rng.normal(0, 0.015), 5),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def make_ev() -> pd.DataFrame:
+    rows = []
+    for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, lat, lon in EMD:
+        n = int(6 + base_res / 5000 + base_visit / 3000)
+        for k in range(n):
+            fast = rng.random() < 0.55
+            rows.append(
+                {
+                    "충전소명": f"{emd} 충전소 {k + 1}",
+                    "시군구": sgg,
+                    "읍면동": emd,
+                    "주소": f"제주특별자치도 {sgg} {emd} 샘플로 {int(rng.integers(1, 400))}",
+                    "충전기유형": "급속" if fast else "완속",
+                    "충전기수": int(rng.integers(1, 5)) if fast else int(rng.integers(2, 12)),
+                    "위도": round(lat + rng.normal(0, 0.015), 5),
+                    "경도": round(lon + rng.normal(0, 0.015), 5),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def make_accommodations() -> pd.DataFrame:
+    types = ["호텔", "콘도미니엄", "휴양펜션", "일반숙박", "호스텔"]
+    rows = []
+    for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, lat, lon in EMD:
+        n = int(4 + base_visit / 900 * tourism + base_res / 20000)
+        for k in range(n):
+            t = str(rng.choice(types, p=[0.25, 0.1, 0.35, 0.22, 0.08]))
+            rooms = {"호텔": int(rng.integers(30, 300)), "콘도미니엄": int(rng.integers(40, 250)), "휴양펜션": int(rng.integers(3, 20)), "일반숙박": int(rng.integers(8, 40)), "호스텔": int(rng.integers(10, 60))}[t]
+            rows.append(
+                {
+                    "업소명": f"{emd} {t} {k + 1}",
+                    "업종": t,
+                    "시군구": sgg,
+                    "읍면동": emd,
+                    "객실수": rooms,
+                    "영업상태": "영업" if rng.random() < 0.9 else "휴업",
+                    "위도": round(lat + rng.normal(0, 0.02), 5),
+                    "경도": round(lon + rng.normal(0, 0.02), 5),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     weather = make_weather()
@@ -271,6 +339,10 @@ def main() -> None:
     stops, bus = make_bus(weather)
     outputs["bus_stops_sample.csv"] = stops
     outputs["bus_stop_daily_users_sample.csv"] = bus
+    # 위치 데이터 3종은 기존 샘플의 난수열을 바꾸지 않도록 마지막에 생성한다.
+    outputs["public_wifi_ap_sample.csv"] = make_wifi()
+    outputs["ev_charging_stations_sample.csv"] = make_ev()
+    outputs["tourist_accommodations_sample.csv"] = make_accommodations()
     for name, df in outputs.items():
         path = SAMPLES_DIR / name
         df.to_csv(path, index=False, encoding="utf-8-sig")
@@ -281,7 +353,8 @@ def main() -> None:
         "제주데이터허브 실제 데이터의 컬럼 구조(레지스트리 기준)를 흉내 내어 에이전트의 동작을 시연·테스트하기 위한 것이며, "
         "값은 실제 통계가 아닙니다. 실제 분석은 `.env` 에 프로젝트 키를 넣어 Open API 로 수집하거나 "
         "허브에서 내려받은 파일을 `data/raw/` 에 넣어 수행하세요.\n\n"
-        f"- 생성 시드: {SEED}\n- 기간: 2024년(일 단위), 카드 2017~2018(월), 입도객 2018~2025(월), 관광지 2019~2024(월)\n",
+        f"- 생성 시드: {SEED}\n- 기간: 2024년(일 단위), 카드 2017~2018(월), 입도객 2018~2025(월), 관광지 2019~2024(월)\n"
+        "- 위치 데이터(와이파이 AP·전기차 충전소·관광 숙박업)는 읍면동 중심 좌표 주변에 난수로 배치한 가짜 위치입니다.\n",
         encoding="utf-8",
     )
 

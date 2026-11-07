@@ -17,7 +17,7 @@
 | 기능 | 설명 |
 |---|---|
 | 🔎 데이터 탐색 | 챌린지 제공 「제주데이터허브 데이터 목록」(1,259종)을 동의어·유사도·인기도로 검색해 질문에 맞는 데이터를 추천 |
-| 📥 데이터 수집 | 제주데이터허브 Open API(`/api/proxy/{API ID}/{프로젝트 키}`) 자동 페이지 수집·캐시, 허브에서 내려받은 CSV/XLSX 자동 인식, 키가 없을 때는 합성 샘플로 동작 |
+| 📥 데이터 수집 | 제주데이터허브 Open API(`/api/proxy/{API ID}/{프로젝트 키}`) 자동 페이지 수집·캐시, 허브에서 내려받은 **임의의 CSV/XLSX**(`data/raw`) 자동 인식·형 추정, 키가 없을 때는 합성 샘플로 동작 |
 | 🧮 자율 분석 | Claude 가 pandas 코드를 작성해 **격리된 하위 프로세스**(모듈 허용목록·시간·메모리 제한)에서 실행. 오류는 모델이 읽고 스스로 수정 |
 | 📊 시각화 | 추세·비교·구성·분포·격자·지도 차트를 일관된 색 체계(색각 이상 안전 팔레트)로 생성 |
 | 📝 보고서 | 결론·근거·한계 + **데이터 출처/이용조건 표 + 실행 코드 전체 + 재현 스크립트**를 자동 첨부한 Markdown/HTML |
@@ -32,6 +32,9 @@
 - 센터 운영 PC 최소사양(i7-8700 / GTX 1060 / RAM 32GB)에서 충분히 동작합니다. GPU 는 사용하지 않습니다.
 
 ### 2) 설치
+**가장 쉬운 방법 (센터 PC·Windows)**: 저장소를 내려받아 압축을 푼 뒤 `setup.bat` 을 더블클릭합니다. 가상환경 생성 → 패키지 설치 → `.env` 생성 → 환경 점검까지 자동으로 진행됩니다. 이후 실행은 `run.bat` 더블클릭 (바탕화면 바로가기 권장). macOS·Linux 는 `./setup.sh` 와 `./run.sh`.
+
+수동 설치:
 ```bash
 git clone https://github.com/sumin9716/Jeju-AI-agent.git
 cd Jeju-AI-agent
@@ -63,7 +66,7 @@ python -m jeju_agent.cli ask "비 오는 날에는 버스 이용객이 얼마나
 | 방식 | 설정 | 특징 |
 |---|---|---|
 | **Open API** (권장) | `.env` 의 `JEJUDATAHUB_PROJECT_KEY` + `registry.yaml` 의 `api_id` | 일 단위 자동 갱신 데이터를 그때그때 수집, 디스크 캐시 |
-| **내려받은 파일** | 허브에서 CSV/XLSX 를 받아 `data/raw/` 에 저장 | 레지스트리의 `file_glob` 패턴(예: `*유동인구*.csv`)과 맞으면 자동 인식 |
+| **내려받은 파일** | 허브에서 CSV/XLSX 를 받아 `data/raw/` 에 저장 | 레지스트리의 `file_glob` 패턴(예: `*유동인구*.csv`)과 맞으면 등록 데이터로 자동 인식. 그 밖의 **어떤 파일이든** `load_file` 도구로 불러와 분석(숫자·날짜 자동 추정, 제목 행 건너뛰기, 엑셀 시트 선택) |
 | **합성 샘플** | 기본 제공 | 실제 통계가 아님. 구조 확인·시연·테스트용 |
 
 출처 우선순위는 `API → 파일 → 샘플` 이며, 답변·보고서마다 어떤 출처를 썼는지 표시됩니다. 현재 상태는 `python -m jeju_agent.cli data status` 로 확인합니다. Open API 연결 점검: `python -m jeju_agent.cli data test-api floating_population_emd --param startDate=20240101 --param endDate=20240131`.
@@ -75,10 +78,10 @@ app.py                      Streamlit 웹 화면
 jeju_agent/
   agent.py                  에이전트 루프 (Claude 스트리밍 호출, 도구 실행, 기록)
   prompts/system.md         시스템 프롬프트 (역할·절차·신뢰성 규칙·자율 판단 범위)
-  tools/schemas.py          도구 정의 6종 (search_catalog, list_datasets, load_dataset, run_python, make_chart, write_report)
+  tools/schemas.py          도구 정의 7종 (search_catalog, list_datasets, load_dataset, load_file, run_python, make_chart, write_report)
   tools/executor.py         도구 실행기
   catalog.py                데이터 목록 1,259종 검색
-  datahub/registry.yaml     등록 데이터셋 9종 (출처·컬럼·이용조건·API 설정)
+  datahub/registry.yaml     등록 데이터셋 12종 (출처·컬럼·이용조건·API 설정)
   datahub/client.py         제주데이터허브 Open API 클라이언트 (페이지 수집·캐시·오류 처리)
   datahub/loaders.py        API → 파일 → 샘플 순 적재, 컬럼 정규화
   sandbox.py / sandbox_runner.py   격리 코드 실행
@@ -93,6 +96,8 @@ outputs/reports|charts|traces   산출물 (git 제외)
 scenarios/*.yaml            재현 시나리오 5종
 docs/                       기획서·사용자 매뉴얼·데이터 활용 명세·결과 설명자료
 tests/                      pytest (API 키 없이 실행 가능)
+setup.bat / run.bat         Windows 설치·실행 (macOS·Linux: setup.sh / run.sh)
+scripts/make_submission.py  제출용 zip 생성 (dist/)
 ```
 
 ### 에이전트 동작 원리
@@ -112,6 +117,13 @@ python -m jeju_agent.cli data status | load <id|No.|이름> [--source auto|api|f
 python -m jeju_agent.cli scenario run scenarios/*.yaml [--quiet]
 python -m jeju_agent.cli samples
 ```
+
+## 제출용 zip 만들기
+```bash
+python scripts/make_submission.py            # dist/jeju-data-navigator_v<버전>_<일시>.zip
+python scripts/make_submission.py --include-outputs   # outputs/ 의 보고서·차트·기록 포함
+```
+`.env`, `data/raw`, 캐시는 제외되며, zip 안의 `SUBMISSION_MANIFEST.md` 가 챌린지 요구 산출물과 파일의 대응을 설명합니다.
 
 ## 테스트
 ```bash

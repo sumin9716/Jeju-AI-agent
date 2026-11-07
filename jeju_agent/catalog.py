@@ -196,6 +196,7 @@ class Catalog:
         category: str | None = None,
         data_type: str | None = None,
         only_api: bool = False,
+        boost_nos: set[int] | None = None,
     ) -> list[CatalogEntry]:
         """키워드(동의어 확장) + 글자 바이그램 유사도 + 인기도로 점수를 매겨 상위 결과를 돌려준다."""
         terms = expand_query(query)
@@ -226,6 +227,8 @@ class Catalog:
             score += 0.15 * math.log1p(row.favorites) + 0.05 * math.log1p(row.views)
             if "api" in row.data_type.lower():
                 score += 0.3  # 자동 수집이 가능한 API 데이터 우대
+            if boost_nos and row.no in boost_nos:
+                score += 2.0  # 바로 불러올 수 있는 등록 데이터 우대
             results.append((score, idx))
         results.sort(key=lambda t: (-t[0], t[1]))
         return [self._to_entry(self.df.iloc[idx], score) for score, idx in results[:top_k]]
