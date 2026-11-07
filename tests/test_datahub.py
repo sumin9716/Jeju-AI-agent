@@ -75,7 +75,8 @@ def test_client_pagination_with_fake_session(tmp_path):
 def test_normalize_renames_and_types():
     r = load_registry()
     spec = r.get("floating_population_emd")
-    df = pd.DataFrame({"baseDate": ["20240101", "20240102"], "emdNm": ["애월읍", "애월읍"], "visitPop": ["1,200", "900"]})
+    # 2026-11-07 실제 응답 컬럼명 (baseDate, emd, visitPop …)
+    df = pd.DataFrame({"baseDate": ["20240101", "20240102"], "emd": ["애월읍", "애월읍"], "visitPop": ["1,200", "900"]})
     out = normalize_dataframe(df, spec)
     assert list(out.columns) == ["날짜", "읍면동", "방문자수"]
     assert str(out["날짜"].dtype).startswith("datetime64")

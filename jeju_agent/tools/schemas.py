@@ -38,7 +38,10 @@ TOOLS: list[dict] = [
         "description": (
             "등록 데이터셋을 세션 표(table)로 불러온다. 출처는 자동(auto)이면 Open API → data/raw 파일 → 합성 샘플 순으로 시도한다. "
             "불러온 뒤 컬럼 구조·결측·예시값 요약을 돌려주므로 분석 코드를 쓰기 전에 반드시 확인한다. "
-            "표 이름은 데이터셋 id 와 같다 (예: floating_population_emd)."
+            "표 이름은 데이터셋 id 와 같다 (예: floating_population_emd). "
+            "Open API 데이터는 기간 변수(시스템 안내의 '기간 변수', 예: startDate/endDate=YYYYMMDD)가 필요하며, 질문의 기간에 맞춰 params 로 넘긴다. "
+            "결과 안내에 '0건'이면 기간을 바꿔 다시, '앞선 출처를 쓰지 못해 대체'가 있으면 그 사유를 읽고 변수를 고쳐 source='api' 로 다시 시도한다. "
+            "'일부만 수집' 경고가 있으면 기간을 나눠 여러 번 불러온 뒤 run_python 에서 합친다."
         ),
         "input_schema": {
             "type": "object",

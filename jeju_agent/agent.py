@@ -209,6 +209,11 @@ class Agent:
             cols = ", ".join(f"{c.name}({c.dtype})" for c in spec.columns)
             lines.append(f"- `{spec.id}` — {spec.name} (No.{spec.catalog_no}, {spec.category}, {spec.access}, 기간 {spec.update})")
             lines.append(f"  - 컬럼: {cols}")
+            if spec.date_params:
+                a, b = (spec.date_params + [spec.date_params[0]])[:2]
+                lines.append(
+                    f"  - Open API 기간 변수: {a}, {b} (YYYYMMDD). 예: load_dataset params={{\"{a}\": \"20240101\", \"{b}\": \"20240131\"}}"
+                )
             if spec.notes:
                 lines.append(f"  - 주의: {spec.notes}")
         lines.append("")

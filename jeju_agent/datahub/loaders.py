@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..config import RAW_DIR, SAMPLES_DIR, Settings
-from .client import DataHubClient, DataHubError
+from .client import DataHubClient, DataHubError, render_params
 from .registry import DatasetSpec, Registry, load_registry
 
 ENCODINGS = ("utf-8-sig", "cp949", "euc-kr", "utf-8")
@@ -302,32 +302,55 @@ class DataStore:
             "file": ["file"],
             "sample": ["sample"],
         }.get(prefer, ["api", "file", "sample"])
+        labels = {"api": "Open API", "file": "내려받은 파일", "sample": "합성 샘플"}
         errors: list[str] = []
         for source in order:
+            # 자동 모드에서는 준비되지 않은 출처(키·api_id 없음, 파일 없음)를 조용히 건너뛴다.
+            if prefer == "auto" and source == "api" and not (
+                spec.api_id and self.client.configured and spec.access in ("api", "api,file")
+            ):
+                continue
+            if prefer == "auto" and source == "file" and not self.find_files(spec):
+                continue
             try:
                 if source == "api":
-                    return self._load_api(spec, params, refresh, max_rows)
-                if source == "file":
-                    return self._load_file(spec, max_rows)
-                if source == "sample":
-                    return self._load_sample(spec, max_rows)
+                    ds = self._load_api(spec, params, refresh, max_rows)
+                elif source == "file":
+                    ds = self._load_file(spec, max_rows)
+                else:
+                    ds = self._load_sample(spec, max_rows)
             except (DataHubError, FileNotFoundError) as e:
-                errors.append(f"{source}: {e}")
+                errors.append(f"{labels[source]}: {e}")
                 continue
-        raise DataHubError(f"'{spec.name}' 을(를) 불러올 수 없습니다. " + " | ".join(errors))
+            if errors:
+                ds.notes.insert(
+                    0,
+                    "⚠️ 앞선 출처를 쓰지 못해 대체했습니다 → " + " | ".join(errors)
+                    + " (질의 변수를 고쳐 source='api' 로 다시 시도할 수 있습니다)",
+                )
+            return ds
+        raise DataHubError(f"'{spec.name}' 을(를) 불러올 수 없습니다. " + (" | ".join(errors) or "사용 가능한 출처가 없습니다."))
 
     def _load_api(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
         if spec.access not in ("api", "api,file"):
             raise DataHubError("Open API 로 제공되지 않는 데이터입니다.")
         merged = dict(spec.api_params or {})
         merged.update(params or {})
-        res = self.client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
+        client = self.client.for_paging(spec.api_paging)
+        res = client.fetch(spec.api_id, merged, refresh=refresh, max_rows=max_rows)
         df = normalize_dataframe(res.df, spec)
-        notes = [f"API 호출 {res.pages}페이지, 전체 {res.total if res.total is not None else '알 수 없음'}건"]
+        shown = render_params(merged)
+        notes = [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {res.total if res.total is not None else '알 수 없음'}건"]
         if res.from_cache:
             notes.append("디스크 캐시에서 읽음 (refresh=True 로 새로 수집 가능)")
-        if merged:
-            notes.append(f"질의 변수: {merged}")
+        if shown:
+            notes.append(f"질의 변수: {shown}")
+        if df.empty:
+            notes.append("⚠️ 이 조건에 해당하는 데이터가 0건입니다. 기간을 앞당기거나 넓혀 다시 요청하세요.")
+        if res.truncated:
+            notes.append(
+                f"⚠️ 전체 {res.total:,}건 중 {len(df):,}건만 수집했습니다(페이지 한도). 기간을 나눠 요청하세요."
+            )
         return LoadedDataset(
             id=spec.id,
             name=spec.name,

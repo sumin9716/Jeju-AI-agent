@@ -22,42 +22,40 @@ datasets:
     source_url: https://www.jejudatahub.net
     access: api
     api_id: "Daaa1t3at3tt8a8DD3t55538t35Dab1t"
-    api_params: {}
+    # 기간 변수는 필수다(없으면 HTTP 400). YYYYMMDD 와 YYYY-MM-DD 모두 받는다. 기본값은 최근 2주 (2026-11-07 실호출로 확인).
+    api_params:
+      startDate: "{{today-21d}}"
+      endDate: "{{today-8d}}"
+    date_params: [startDate, endDate]
     file_glob: "*유동인구*.csv;*유동인구*.xlsx;floating_population*.csv"
     sample_file: floating_population_emd_sample.csv
     update: "2017-01-01 ~ (일 단위 자동갱신)"
     license: 제주데이터허브 이용약관 (출처 표시 후 자유 이용, 상세 조건은 데이터 상세 페이지 확인)
-    schema_verified: false
+    schema_verified: true
     columns:
-      - {name: 날짜, dtype: date, desc: 기준 일자}
-      - {name: 시군구, dtype: str, desc: 제주시/서귀포시}
-      - {name: 읍면동, dtype: str, desc: 행정 읍면동명}
-      - {name: 성별, dtype: str, desc: 남/여}
-      - {name: 연령대, dtype: str, desc: 10대~70대 이상}
-      - {name: 거주인구, dtype: int, desc: 해당 읍면동에 거주하는 내국인 추정 인구}
-      - {name: 근무인구, dtype: int, desc: 해당 읍면동에서 근무하는 내국인 추정 인구}
-      - {name: 방문자수, dtype: int, desc: 거주·근무 외 방문 목적의 내국인 추정 인구}
+      - {name: 날짜, dtype: date, desc: 기준 일자 (baseDate)}
+      - {name: 시군구, dtype: str, desc: 제주시/서귀포시 (city)}
+      - {name: 읍면동, dtype: str, desc: 행정 읍면동명 (emd)}
+      - {name: 성별, dtype: str, desc: 남/여 (gender)}
+      - {name: 연령대, dtype: str, desc: 10대 등 (ageGroup)}
+      - {name: 거주인구, dtype: int, desc: 해당 읍면동 거주 내국인 추정치 (resdPop)}
+      - {name: 근무인구, dtype: int, desc: 해당 읍면동 근무 내국인 추정치 (workPop)}
+      - {name: 방문자수, dtype: int, desc: 거주·근무 외 방문 내국인 추정치 (visitPop)}
+    # 실제 응답 컬럼 (2026-11-07 check-api 로 확인)
     rename:
       baseDate: 날짜
-      base_date: 날짜
-      date: 날짜
-      sigungu: 시군구
       city: 시군구
       emd: 읍면동
-      emdNm: 읍면동
-      emd_nm: 읍면동
-      dong: 읍면동
       gender: 성별
-      sex: 성별
-      age: 연령대
       ageGroup: 연령대
-      age_group: 연령대
-      residPop: 거주인구
       resdPop: 거주인구
       workPop: 근무인구
       visitPop: 방문자수
-      visitCnt: 방문자수
-    notes: 통신사 기반 추정치이며 실제 주민등록 인구와 다르다. 일 단위로 갱신되므로 기간을 지정해 수집한다.
+    notes: >-
+      Open API 필수 질의 변수는 startDate·endDate(YYYYMMDD)이다. 하루 약 688건(읍면동 43곳 × 성별 2 × 연령대 8로 추정)이므로
+      한 번에 3개월 이내로 요청한다. 통신사 기반 추정치이며 값이 실제 주민 수보다 훨씬 크게 나타난다
+      (예: 2024-01-01 애월읍 30대 남성 거주인구 37,074). 시간대별 추정치를 합산한 값일 수 있으므로 절대 인원으로 말하지 말고
+      지역·요일·기간 간 상대 비교와 추세로 해석한다.
 
   - id: bus_stop_daily_users
     catalog_no: 725

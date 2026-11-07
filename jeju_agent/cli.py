@@ -257,6 +257,14 @@ def cmd_data_check_api(args: argparse.Namespace) -> int:
         if k:
             extra[k] = v
     results = check_apis(client, specs, extra_params=extra, rows=rows)
+    if args.deep:
+        from .datahub.apicheck import deep_check
+
+        spec_by_id = {sp.id: sp for sp in specs}
+        for r in results:
+            if r.status in ("ok", "empty"):
+                _print(f"정밀 점검 중: {r.name} …")
+                r.deep = deep_check(client, spec_by_id[r.id], r.params)
     path = save_results(results, OUTPUT_DIR / "checks")
     _print(format_report(results, saved_path=path))
     return 0 if all(r.status != "error" for r in results) else 1
@@ -342,6 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--dataset", action="append", help="특정 데이터셋만 (id/No./이름, 여러 번 가능)")
     ca.add_argument("--param", action="append", help="모든 호출에 붙일 질의 변수 key=value (여러 번 가능)")
     ca.add_argument("--rows", type=int, default=2, help="데이터셋마다 가져올 예시 행 수 (기본 2)")
+    ca.add_argument("--deep", action="store_true", help="페이지 넘김·페이지 상한·최신 데이터 날짜까지 정밀 점검")
     ca.set_defaults(func=cmd_data_check_api)
 
     sc = sub.add_parser("scenario", help="재현 시나리오").add_subparsers(dest="sub", required=True)
