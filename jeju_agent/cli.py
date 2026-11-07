@@ -126,12 +126,12 @@ def cmd_ask(args: argparse.Namespace) -> int:
     result, elapsed = _run_turn(agent, args.question)
     if result is None:
         return 130
-    _print("\n")
-    _print("=" * 70)
-    _print(result.text)
-    _print("=" * 70)
     from .agent import usage_summary
 
+    # 답은 실행 중에 이미 화면에 흘려 보냈으므로 다시 출력하지 않고 요약만 덧붙인다.
+    if result.error:
+        _print(f"\n[오류] {result.error}")
+    _print("\n" + "─" * 70)
     _print(f"단계 {len(result.steps)}개 · 총 {elapsed:.0f}초 · 토큰 {usage_summary(result.usage)}")
     for r in agent.session.reports:
         _print(f"보고서: {r.html_path}")

@@ -76,3 +76,23 @@ def test_sandbox_loads_chart_libraries_only_when_used(tmp_path):
     assert with_px.ok and "plotly" in with_px.loaded and with_px.charts[0]["kind"] == "plotly"
     own_mpl = run_code("import matplotlib.pyplot as plt\nplt.plot([1, 2])\nplt.title('m')", {}, timeout=60, chart_dir=tmp_path)
     assert own_mpl.ok and "matplotlib" in own_mpl.loaded and own_mpl.charts[0]["kind"] == "image"
+
+
+def test_cli_ask_prints_answer_once(monkeypatch, capsys):
+    import argparse
+
+    from jeju_agent import cli
+
+    answer = "주말 방문자가 더 많습니다. 고유문장123"
+    agent = Agent(settings=Settings(), backend=ScriptedBackend([{"content": [{"type": "text", "text": answer}], "stop_reason": "end_turn"}]))
+    monkeypatch.setattr(cli, "_make_agent", lambda args: agent)
+    code = cli.cmd_ask(argparse.Namespace(question="질문"))
+    out = capsys.readouterr().out
+    assert code == 0 and out.count("고유문장123") == 1 and "단계 0개" in out
+
+
+def test_report_file_name_has_no_broken_parenthesis():
+    from jeju_agent.report import _slug
+
+    name = _slug("2026년 8월 애월읍 주말·평일 방문자 비교 (연령대별)")
+    assert "(" not in name and ")" not in name and len(name) <= 40 and not name.endswith("_")

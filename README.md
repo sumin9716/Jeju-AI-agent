@@ -156,6 +156,7 @@ API 키 없이 실행됩니다(스크립트 백엔드로 전체 흐름 검증). 
 | `제한 시간 90초를 넘겨` | 코드 실행 초과. 모델이 집계 범위를 줄여 재시도함. `JEJU_AGENT_SANDBOX_TIMEOUT` 로 조정 |
 | 차트 한글이 □ 로 보임 (PNG) | matplotlib 글꼴 문제. plotly 차트(기본)는 영향 없음. Windows 는 `Malgun Gothic` 자동 사용 |
 | 포트 8501 사용 중 | `streamlit run app.py --server.port 8600` |
+| 새로 올라온 허브 데이터가 안 보임 | Open API 결과는 `data/cache/` 에 72시간 보관되고 0건 결과는 저장하지 않음. 바로 다시 받으려면 `data/cache/` 의 파일을 지우세요 |
 | 답이 몇 분씩 걸림 | `.env` 의 `JEJU_AGENT_EFFORT=max` 는 단계마다 오래 생각함. 평소에는 `medium` 권장 (`ask ... --effort medium` 으로 한 번만 바꿀 수도 있음) |
 
 - 제주데이터허브 Open API 의 실제 응답 필드명은 서비스마다 다를 수 있습니다. `data test-api` 로 확인하고 `registry.yaml` 의 `rename` 으로 한글 컬럼명에 맞추면 됩니다(맞추지 않아도 에이전트는 원본 컬럼명으로 분석합니다).

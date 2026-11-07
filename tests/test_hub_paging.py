@@ -211,3 +211,26 @@ def test_registry_filter_params_reach_system_prompt():
     assert set(spec.filter_params) == {"emd", "city", "gender", "ageGroup"}
     text = Agent(settings=Settings(), backend=ScriptedBackend([])).system_blocks()[0]["text"]
     assert "거르기 변수" in text and "emd=" in text and "startDate" in text
+
+
+def test_empty_results_are_not_cached_and_old_cache_expires(tmp_path):
+    import json as _json
+    from datetime import datetime as _dt
+
+    hub = FakeHub(days=5, per_day=2, lag=40)
+    c = _client(hub, tmp_path)
+    future = {"startDate": "20261001", "endDate": "20261031"}  # 아직 데이터가 없는 기간
+    assert len(c.fetch("API", future).df) == 0
+    assert list(tmp_path.glob("*.json")) == []  # 0건은 저장하지 않음
+    calls = len(hub.calls)
+    assert len(c.fetch("API", future).df) == 0 and len(hub.calls) > calls  # 다음에 다시 물어본다
+
+    window = {"startDate": "20260901", "endDate": "20260930"}
+    first = c.fetch("API", window)
+    assert not first.from_cache and len(first.df) == 10
+    assert c.fetch("API", window).from_cache  # 유효 기간 안에서는 캐시
+    path = next(tmp_path.glob("*.json"))
+    data = _json.loads(path.read_text(encoding="utf-8"))
+    data["fetched_at"] = _dt(2020, 1, 1).isoformat()
+    path.write_text(_json.dumps(data), encoding="utf-8")
+    assert not c.fetch("API", window).from_cache  # 오래된 캐시는 다시 받음
