@@ -383,32 +383,149 @@ datasets:
     provider: 제주특별자치도 (제주데이터허브)
     source_url: https://www.jejudatahub.net
     access: api
-    api_id: ""
+    # API ID·질의 변수·응답 필드는 공개 저장소 Yanghj3119/JNUproject 의 server/hub.js 호출 코드에서 확인했다.
+    # 사용자 프로젝트에 이 API 를 담아야 호출되며, check-api 로 실제 응답을 확인하면 schema_verified 를 true 로 바꾼다.
+    api_id: "ttbttaD3aaa3ta8bbtDtaDD18t37aD17"
     api_params: {}
+    filter_params:
+      companyName: 업소명 일부
+      bizSmallType: 업종 소분류 (예 관광호텔업, 휴양펜션업)
+      openStatus: 영업 상태 (예 영업/정상)
     file_glob: "*숙박업*.csv;*숙박업*.xlsx;tourist_accommodation*.csv"
     sample_file: tourist_accommodations_sample.csv
     update: "2025-09-18 기준"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
-      - {name: 업소명, dtype: str}
-      - {name: 업종, dtype: str, desc: 호텔/콘도/휴양펜션/일반숙박 등}
-      - {name: 시군구, dtype: str}
-      - {name: 읍면동, dtype: str}
-      - {name: 객실수, dtype: int}
-      - {name: 영업상태, dtype: str}
-      - {name: 위도, dtype: float}
-      - {name: 경도, dtype: float}
+      - {name: 업소명, dtype: str, desc: companyName}
+      - {name: 업종, dtype: str, desc: 소분류 (bizSmallType)}
+      - {name: 업종대분류, dtype: str, desc: bizLargeType}
+      - {name: 객실수, dtype: int, desc: roomCount}
+      - {name: 영업상태, dtype: str, desc: openStatus (예 영업/정상)}
+      - {name: 도로명주소, dtype: str, desc: addressDoro}
+      - {name: 지번주소, dtype: str, desc: addressJibun}
+      - {name: 인허가일자, dtype: date, desc: licensingDate (YYYYMMDD)}
     rename:
-      bizNm: 업소명
-      bizType: 업종
-      roomCnt: 객실수
-      status: 영업상태
-      emdNm: 읍면동
-      lat: 위도
-      lng: 경도
-      lon: 경도
-    notes: 관광진흥법상 등록 숙박업 기준이며 농어촌민박(No.402)·일반 숙박시설은 별도 데이터다.
+      companyName: 업소명
+      bizSmallType: 업종
+      bizLargeType: 업종대분류
+      roomCount: 객실수
+      openStatus: 영업상태
+      addressDoro: 도로명주소
+      addressJibun: 지번주소
+      licensingDate: 인허가일자
+      updateAt: 수정일시
+    notes: >-
+      관광진흥법상 등록 숙박업 기준이며 농어촌민박(No.402)·일반 숙박시설은 별도 데이터다. 읍면동 컬럼이 따로 없으므로
+      도로명·지번 주소 문자열에서 읍면동 이름(예 애월읍)을 찾아 지역별로 집계하고, 영업 중인 곳만 보려면 openStatus 로 거른다.
+
+  - id: oreum_locations
+    catalog_no: 544
+    name: 오름 위치 정보
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    # API ID·필드는 공개 저장소 Yanghj3119/JNUproject 의 server/hub.js 기준 (check-api 로 확인 필요)
+    api_id: "1Dttb1tab8tD88Dtat11111at1t1atD8"
+    api_params: {}
+    file_glob: "*오름*.csv;oreum*.csv"
+    sample_file: oreum_locations_sample.csv
+    update: "2025-09-21 기준"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 장소명, dtype: str, desc: placeName}
+      - {name: 분류, dtype: str, desc: category}
+      - {name: 도로명주소, dtype: str, desc: addressDoro}
+      - {name: 지번주소, dtype: str, desc: addressJibun}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
+      - {name: 전화번호, dtype: str, desc: phone}
+    rename:
+      placeName: 장소명
+      category: 분류
+      addressDoro: 도로명주소
+      addressJibun: 지번주소
+      latitude: 위도
+      longitude: 경도
+      phone: 전화번호
+      placeUrl: 상세링크
+    filter_params:
+      placeName: 장소 이름 일부
+    notes: 위치 정보이므로 지도 차트(map, x=경도, y=위도)에 적합하다. 주소 문자열로 읍면동별 개수를 셀 수 있다.
+
+  - id: museum_locations
+    catalog_no: 543
+    name: 박물관 및 미술관 위치 정보
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    # API ID·필드는 공개 저장소 Yanghj3119/JNUproject 의 server/hub.js 기준 (check-api 로 확인 필요)
+    api_id: "at2ta1D1aaa811bata88Dt1D22b1t1bt"
+    api_params: {}
+    file_glob: "*박물관*.csv;*미술관*.csv;museum*.csv"
+    sample_file: museum_locations_sample.csv
+    update: "2025-09-21 기준"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 장소명, dtype: str, desc: placeName}
+      - {name: 분류, dtype: str, desc: category}
+      - {name: 도로명주소, dtype: str, desc: addressDoro}
+      - {name: 지번주소, dtype: str, desc: addressJibun}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
+      - {name: 전화번호, dtype: str, desc: phone}
+    rename:
+      placeName: 장소명
+      category: 분류
+      addressDoro: 도로명주소
+      addressJibun: 지번주소
+      latitude: 위도
+      longitude: 경도
+      phone: 전화번호
+      placeUrl: 상세링크
+    filter_params:
+      placeName: 장소 이름 일부
+    notes: 위치 정보이므로 지도 차트에 적합하다. 비 오는 날 갈 만한 실내 관광지 분석 등에 쓴다.
+
+  - id: souvenir_shops
+    catalog_no: 551
+    name: 기념품 가게 위치 정보
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    # API ID·필드는 공개 저장소 Yanghj3119/JNUproject 의 server/hub.js 기준 (check-api 로 확인 필요)
+    api_id: "11D8at1abba0ttaDa8t8atta01188t81"
+    api_params: {}
+    file_glob: "*기념품*.csv;souvenir*.csv"
+    sample_file: souvenir_shops_sample.csv
+    update: "2025-09-21 기준"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 장소명, dtype: str, desc: placeName}
+      - {name: 분류, dtype: str, desc: category}
+      - {name: 도로명주소, dtype: str, desc: addressDoro}
+      - {name: 지번주소, dtype: str, desc: addressJibun}
+      - {name: 위도, dtype: float, desc: latitude}
+      - {name: 경도, dtype: float, desc: longitude}
+      - {name: 전화번호, dtype: str, desc: phone}
+    rename:
+      placeName: 장소명
+      category: 분류
+      addressDoro: 도로명주소
+      addressJibun: 지번주소
+      latitude: 위도
+      longitude: 경도
+      phone: 전화번호
+      placeUrl: 상세링크
+    filter_params:
+      placeName: 장소 이름 일부
+    notes: 위치 정보이므로 지도 차트에 적합하다. 관광객 유동인구·카드 소비와 함께 상권을 볼 때 쓴다.
 
   - id: floating_population_foreign_long
     catalog_no: 747
