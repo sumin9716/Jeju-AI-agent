@@ -106,6 +106,7 @@ docs/                       기획서·사용자 매뉴얼·데이터 활용 명
 tests/                      pytest (API 키 없이 실행 가능)
 setup.bat / run.bat         Windows 설치·실행 (macOS·Linux: setup.sh / run.sh)
 scripts/make_submission.py  제출용 zip 생성 (dist/)
+scripts/export_docs.py      기획서·결과 설명자료 등 제출 문서를 인쇄용 HTML 로 (dist/docs/, 브라우저에서 PDF 로 저장)
 ```
 
 ### 에이전트 동작 원리
@@ -131,6 +132,7 @@ python -m jeju_agent.cli samples
 ```bash
 python scripts/make_submission.py            # dist/jeju-data-navigator_v<버전>_<일시>.zip
 python scripts/make_submission.py --include-outputs   # outputs/ 의 보고서·차트·기록 포함
+python scripts/export_docs.py                 # dist/docs/*.html → 브라우저에서 Ctrl+P → 'PDF로 저장' (zip 에도 제출문서/ 로 포함)
 ```
 `.env`, `data/raw`, 캐시는 제외되며, zip 안의 `SUBMISSION_MANIFEST.md` 가 챌린지 요구 산출물과 파일의 대응을 설명합니다.
 
