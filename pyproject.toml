@@ -1,0 +1,37 @@
+[project]
+name = "jeju-data-navigator"
+version = "0.1.0"
+description = "제주데이터허브 데이터를 자연어로 탐색·분석·보고하는 AI Agent (제주 AI·빅데이터 활용 AI Agent 개발 챌린지)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "anthropic>=2.6.0",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "openpyxl>=3.1",
+  "pyyaml>=6.0",
+  "python-dotenv>=1.0",
+  "requests>=2.31",
+  "streamlit>=1.40",
+  "plotly>=5.24",
+  "matplotlib>=3.9",
+  "tabulate>=0.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jeju-agent = "jeju_agent.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["jeju_agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

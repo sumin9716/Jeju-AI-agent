@@ -1,0 +1,302 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# 데이터 레지스트리: 에이전트가 바로 불러올 수 있도록 미리 등록한 제주데이터허브 데이터셋.
+#
+#  - catalog_no : 「제주데이터허브 데이터 목록_20261105」의 No. (data/catalog/*.csv)
+#  - access     : api(Open API) | file(허브에서 파일 다운로드) | link(외부 링크)
+#  - api_id     : 제주데이터허브 데이터 상세 페이지 > "API" 탭에 표시되는 고유 ID.
+#                 허브 로그인 → 마이페이지 → 프로젝트 생성/API 신청 후 확인해 채워 넣는다.
+#                 (프로젝트 키는 .env 의 JEJUDATAHUB_PROJECT_KEY 에 넣는다)
+#  - api_params : 호출 시 기본으로 붙일 질의 변수. {{today}}, {{today-90d}} 같은 날짜 치환 가능.
+#  - file_glob  : data/raw/ 에서 찾을 파일 이름 패턴 (CSV/XLSX). 허브에서 내려받아 저장하면 자동 인식.
+#  - sample_file: data/samples/ 의 합성 샘플 (scripts/make_samples.py 로 생성). 실제 데이터가 아니다.
+#  - columns    : 샘플/정규화 기준 컬럼. 실제 API 응답 키가 다르면 rename 으로 맞춘다.
+#  - schema_verified: 실제 응답 스키마를 확인했는지 여부(false 면 공개 명세 기반 추정).
+# ──────────────────────────────────────────────────────────────────────────────
+version: 1
+datasets:
+  - id: floating_population_emd
+    catalog_no: 753
+    name: 읍면동 단위 내국인 유동인구
+    category: 인구, 생활
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*유동인구*.csv;*유동인구*.xlsx;floating_population*.csv"
+    sample_file: floating_population_emd_sample.csv
+    update: "2017-01-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시 후 자유 이용, 상세 조건은 데이터 상세 페이지 확인)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date, desc: 기준 일자}
+      - {name: 시군구, dtype: str, desc: 제주시/서귀포시}
+      - {name: 읍면동, dtype: str, desc: 행정 읍면동명}
+      - {name: 성별, dtype: str, desc: 남/여}
+      - {name: 연령대, dtype: str, desc: 10대~70대 이상}
+      - {name: 거주인구, dtype: int, desc: 해당 읍면동에 거주하는 내국인 추정 인구}
+      - {name: 근무인구, dtype: int, desc: 해당 읍면동에서 근무하는 내국인 추정 인구}
+      - {name: 방문자수, dtype: int, desc: 거주·근무 외 방문 목적의 내국인 추정 인구}
+    rename:
+      baseDate: 날짜
+      base_date: 날짜
+      date: 날짜
+      sigungu: 시군구
+      city: 시군구
+      emd: 읍면동
+      emdNm: 읍면동
+      emd_nm: 읍면동
+      dong: 읍면동
+      gender: 성별
+      sex: 성별
+      age: 연령대
+      ageGroup: 연령대
+      age_group: 연령대
+      residPop: 거주인구
+      resdPop: 거주인구
+      workPop: 근무인구
+      visitPop: 방문자수
+      visitCnt: 방문자수
+    notes: 통신사 기반 추정치이며 실제 주민등록 인구와 다르다. 일 단위로 갱신되므로 기간을 지정해 수집한다.
+
+  - id: bus_stop_daily_users
+    catalog_no: 725
+    name: 일일 정류소별 버스 이용자 정보
+    category: 교통, 안전
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*정류소별*이용자*.csv;*정류소별*.xlsx;bus_stop_daily*.csv"
+    sample_file: bus_stop_daily_users_sample.csv
+    update: "2015-01-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date, desc: 기준 일자}
+      - {name: 정류소ID, dtype: str, desc: 버스 정류소 고유 ID}
+      - {name: 정류소명, dtype: str}
+      - {name: 읍면동, dtype: str, desc: 정류소가 위치한 읍면동}
+      - {name: 승차인원, dtype: int, desc: 교통카드 기준 승차 인원}
+      - {name: 하차인원, dtype: int, desc: 교통카드 기준 하차 인원}
+    rename:
+      baseDate: 날짜
+      date: 날짜
+      stationId: 정류소ID
+      stopId: 정류소ID
+      stationNm: 정류소명
+      stopName: 정류소명
+      emdNm: 읍면동
+      rideCnt: 승차인원
+      boardCnt: 승차인원
+      alightCnt: 하차인원
+      getoffCnt: 하차인원
+    notes: 현금 승차는 집계되지 않을 수 있다. 정류소 기본 정보(No.726)와 정류소ID로 결합해 좌표를 얻을 수 있다.
+
+  - id: bus_stops
+    catalog_no: 726
+    name: 버스 정류소 기본 정보
+    category: 교통, 안전
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*정류소*기본*.csv;bus_stops*.csv"
+    sample_file: bus_stops_sample.csv
+    update: "2019-04-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 정류소ID, dtype: str}
+      - {name: 정류소명, dtype: str}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 위도, dtype: float}
+      - {name: 경도, dtype: float}
+    rename:
+      stationId: 정류소ID
+      stationNm: 정류소명
+      emdNm: 읍면동
+      lat: 위도
+      lng: 경도
+      lon: 경도
+    notes: 지도 시각화와 정류소별 이용자 데이터 결합에 사용.
+
+  - id: daily_weather
+    catalog_no: 756
+    name: 일별 기상 정보
+    category: 환경, 재난
+    provider: 제주특별자치도 (제주데이터허브, 원자료 기상청)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*기상*.csv;*기상*.xlsx;daily_weather*.csv"
+    sample_file: daily_weather_sample.csv
+    update: "2014-01-01 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date}
+      - {name: 관측소명, dtype: str, desc: 제주/서귀포/성산/고산 등}
+      - {name: 평균기온, dtype: float, desc: ℃}
+      - {name: 최고기온, dtype: float, desc: ℃}
+      - {name: 최저기온, dtype: float, desc: ℃}
+      - {name: 강수량, dtype: float, desc: mm}
+      - {name: 평균풍속, dtype: float, desc: m/s}
+    rename:
+      baseDate: 날짜
+      date: 날짜
+      stationNm: 관측소명
+      stnNm: 관측소명
+      avgTa: 평균기온
+      avgTemp: 평균기온
+      maxTa: 최고기온
+      minTa: 최저기온
+      sumRn: 강수량
+      rain: 강수량
+      avgWs: 평균풍속
+    notes: 관측소별 값이므로 읍면동과 결합할 때는 가장 가까운 관측소를 기준으로 한다.
+
+  - id: card_domestic_tourist
+    catalog_no: 741
+    name: 내국인 관광객 지역, 업종, 성별, 연령대별 카드 이용 데이터
+    category: 소비, 경제
+    provider: 제주특별자치도 (제주데이터허브, 카드사 제공)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*카드*이용*.csv;*카드*.xlsx;card_domestic*.csv"
+    sample_file: card_domestic_tourist_sample.csv
+    update: "2016-09-01 ~ 2018-12-31"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 연월, dtype: str, desc: YYYY-MM}
+      - {name: 읍면동, dtype: str}
+      - {name: 업종, dtype: str, desc: 식음료/소매/숙박/문화레저/교통/쇼핑 등}
+      - {name: 성별, dtype: str}
+      - {name: 연령대, dtype: str}
+      - {name: 이용건수, dtype: int}
+      - {name: 이용금액, dtype: int, desc: 원}
+    rename:
+      baseYm: 연월
+      ym: 연월
+      emdNm: 읍면동
+      industry: 업종
+      bizType: 업종
+      gender: 성별
+      age: 연령대
+      useCnt: 이용건수
+      useAmt: 이용금액
+    notes: 카드 명의자 기준 성별·연령대이므로 실제 이용자와 다를 수 있다. 수집 기간이 2018년까지이므로 최근 추세 해석에 주의.
+
+  - id: restaurants
+    catalog_no: 571
+    name: 제주특별자치도 음식점 목록(통합)
+    category: 소비, 경제
+    provider: 제주특별자치도 (제주데이터허브, 지방행정 인허가)
+    source_url: https://www.jejudatahub.net
+    access: file
+    api_id: ""
+    api_params: {}
+    file_glob: "*음식점*.csv;*음식점*.xlsx;restaurants*.csv"
+    sample_file: restaurants_sample.csv
+    update: "1960-01-01 ~ 2025-08-31"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 사업장명, dtype: str}
+      - {name: 업태구분, dtype: str, desc: 한식/카페/분식/일식 등}
+      - {name: 시군구, dtype: str}
+      - {name: 읍면동, dtype: str}
+      - {name: 도로명주소, dtype: str}
+      - {name: 인허가일자, dtype: date}
+      - {name: 영업상태, dtype: str, desc: 영업/폐업}
+      - {name: 폐업일자, dtype: date}
+    rename: {}
+    notes: 인허가 기준이므로 실제 영업 여부와 시차가 있다. 폐업일자로 생존 기간 분석이 가능.
+
+  - id: visitors_by_purpose
+    catalog_no: 755
+    name: 방문목적별 입도객 현황
+    category: 인구, 생활
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*입도객*.csv;*입도객*.xlsx;visitors_by_purpose*.csv"
+    sample_file: visitors_by_purpose_sample.csv
+    update: "2018-01-01 ~ 2025-07-31"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 연월, dtype: str}
+      - {name: 구분, dtype: str, desc: 내국인/외국인}
+      - {name: 방문목적, dtype: str, desc: 관광/사업/친지방문/기타 등}
+      - {name: 입도객수, dtype: int}
+    rename:
+      baseYm: 연월
+      purpose: 방문목적
+      visitorCnt: 입도객수
+    notes: 입도 집계 기준(공항·항만)이며 월 단위.
+
+  - id: tourist_spots_domestic
+    catalog_no: 746
+    name: 관광지별 내국인 유입자 수
+    category: 관광, 여행
+    provider: 제주특별자치도 (제주데이터허브)
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*관광지별*내국인*.csv;tourist_spots*.csv"
+    sample_file: tourist_spots_domestic_sample.csv
+    update: "2009-01-01 ~ 2024-12-31"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 연월, dtype: str}
+      - {name: 관광지명, dtype: str}
+      - {name: 시군구, dtype: str}
+      - {name: 유입자수, dtype: int}
+    rename:
+      baseYm: 연월
+      spotNm: 관광지명
+      visitorCnt: 유입자수
+    notes: 유료 관광지 입장객 집계 기준.
+
+  - id: agri_price_daily
+    catalog_no: 5
+    name: 농산물 품종별 일일 거래 통계
+    category: 농축수산
+    provider: 제주데이터허브
+    source_url: https://www.jejudatahub.net
+    access: api
+    api_id: ""
+    api_params: {}
+    file_glob: "*농산물*거래*.csv;*농산물*.xlsx;agri_price*.csv"
+    sample_file: agri_price_daily_sample.csv
+    update: "2016-01-04 ~ (일 단위 자동갱신)"
+    license: 제주데이터허브 이용약관 (출처 표시)
+    schema_verified: false
+    columns:
+      - {name: 날짜, dtype: date}
+      - {name: 품목, dtype: str, desc: 감귤/당근/양배추/무/브로콜리/마늘 등}
+      - {name: 품종, dtype: str}
+      - {name: 등급, dtype: str, desc: 특/상/보통}
+      - {name: 평균가격, dtype: int, desc: 원/kg}
+      - {name: 거래량, dtype: int, desc: kg}
+    rename:
+      baseDate: 날짜
+      item: 품목
+      itemNm: 품목
+      variety: 품종
+      grade: 등급
+      avgPrice: 평균가격
+      volume: 거래량
+    notes: 도매시장 거래 기준. 품목·등급 혼합 평균은 의미가 없으므로 반드시 품목·등급별로 본다.
