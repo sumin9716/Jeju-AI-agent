@@ -39,6 +39,7 @@ MANIFEST = """# 제출물 구성 (SUBMISSION_MANIFEST)
 | 데이터 활용 명세 (필수 데이터 사용 내역, 출처·이용조건, 전처리·분석 흐름, 외부 데이터·오픈소스) | `docs/DATA_SPEC.md`, `jeju_agent/datahub/registry.yaml`, `data/catalog/` |
 | 결과 설명자료 (문제 정의, Agent 구조, 주요 기능, 실행 결과, 검증 방법·한계, 센터 활용 방안) | `docs/RESULT_REPORT.md` (+ `docs/PLAN.md` 기획서) |
 | 재현 (시나리오·테스트·샘플) | `scenarios/`, `tests/`, `data/samples/`, `scripts/make_samples.py` |
+| 인쇄용 문서 (브라우저에서 열어 Ctrl+P → PDF로 저장) | `제출문서/01_AI_Agent_기획서.html` ~ `05_실행환경_README.html` (`scripts/export_docs.py` 로 생성) |
 
 생성 일시: {now} · 버전 v{version}
 """
@@ -66,6 +67,14 @@ def collect(include_outputs: bool) -> list[Path]:
     return sorted(set(files))
 
 
+def printable_docs() -> list[tuple[str, str]]:
+    """기획서·결과 설명자료 등 제출 문서의 인쇄용 HTML (scripts/export_docs.py 와 같은 변환)."""
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from export_docs import DOCS, to_html  # noqa: E402
+
+    return [(stem, to_html((ROOT / src).read_text(encoding="utf-8"), title, src)) for src, stem, title in DOCS]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="dist")
@@ -82,8 +91,10 @@ def main() -> int:
         for f in files:
             zf.write(f, f"jeju-data-navigator/{f.relative_to(ROOT).as_posix()}")
         zf.writestr("jeju-data-navigator/SUBMISSION_MANIFEST.md", MANIFEST.format(now=datetime.now().isoformat(timespec="minutes"), version=__version__))
+        for stem, text in printable_docs():
+            zf.writestr(f"jeju-data-navigator/제출문서/{stem}.html", text)
     size_mb = zip_path.stat().st_size / 1024 / 1024
-    print(f"{zip_path} ({size_mb:.1f} MB, 파일 {len(files) + 1}개)")
+    print(f"{zip_path} ({size_mb:.1f} MB, 파일 {len(files) + 1 + len(printable_docs())}개)")
     return 0
 
 
