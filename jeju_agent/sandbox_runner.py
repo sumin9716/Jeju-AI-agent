@@ -11,6 +11,7 @@ import io
 import json
 import os
 import pickle
+import re
 import sys
 import time
 import traceback
@@ -145,28 +146,34 @@ def main() -> None:
     import numpy as np
     import pandas as pd
 
-    try:
-        import matplotlib
+    code = (workdir / "code.py").read_text(encoding="utf-8")
+    # 차트 라이브러리는 불러오는 데 몇 초가 걸리므로(특히 Windows) 코드에서 쓸 때만 불러온다.
+    want_mpl = bool(re.search(r"\bplt\b|matplotlib", code))
+    want_plotly = bool(re.search(r"\bpx\b|\bgo\b|plotly", code))
 
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+    plt = None
+    if want_mpl:
+        try:
+            import matplotlib
 
-        try:  # 한글 글꼴이 있으면 사용
-            import matplotlib.font_manager as fm
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
 
-            for name in ("Malgun Gothic", "NanumGothic", "AppleGothic", "Noto Sans CJK KR", "Noto Sans KR"):
-                if any(f.name == name for f in fm.fontManager.ttflist):
-                    plt.rcParams["font.family"] = name
-                    break
-            plt.rcParams["axes.unicode_minus"] = False
+            try:  # 한글 글꼴이 있으면 사용
+                import matplotlib.font_manager as fm
+
+                for name in ("Malgun Gothic", "NanumGothic", "AppleGothic", "Noto Sans CJK KR", "Noto Sans KR"):
+                    if any(f.name == name for f in fm.fontManager.ttflist):
+                        plt.rcParams["font.family"] = name
+                        break
+                plt.rcParams["axes.unicode_minus"] = False
+            except Exception:  # noqa: BLE001
+                pass
         except Exception:  # noqa: BLE001
-            pass
-    except Exception:  # noqa: BLE001
-        plt = None
+            plt = None
 
     with open(workdir / "tables.pkl", "rb") as f:
         tables: dict = pickle.load(f)
-    code = (workdir / "code.py").read_text(encoding="utf-8")
 
     saved: dict[str, pd.DataFrame] = {}
 
@@ -196,14 +203,15 @@ def main() -> None:
     }
     if plt is not None:
         namespace["plt"] = plt
-    try:
-        import plotly.express as px
-        import plotly.graph_objects as go
+    if want_plotly:
+        try:
+            import plotly.express as px
+            import plotly.graph_objects as go
 
-        namespace["px"] = px
-        namespace["go"] = go
-    except Exception:  # noqa: BLE001
-        pass
+            namespace["px"] = px
+            namespace["go"] = go
+        except Exception:  # noqa: BLE001
+            pass
     for key, df in tables.items():
         if key.isidentifier() and key not in namespace:
             namespace[key] = df
@@ -263,6 +271,7 @@ def main() -> None:
             charts.append({"kind": "plotly", "path": str(path), "title": title})
         except Exception as e:  # noqa: BLE001
             manifest["stdout"] += f"\n[차트 저장 실패] {e}"
+    plt = sys.modules.get("matplotlib.pyplot")  # 코드가 직접 불러온 경우도 포함
     if plt is not None:
         try:
             for j, num in enumerate(plt.get_fignums()):
@@ -280,6 +289,7 @@ def main() -> None:
         except Exception as e:  # noqa: BLE001
             manifest["stdout"] += f"\n[차트 저장 실패] {e}"
     manifest["charts"] = charts
+    manifest["loaded"] = sorted(m for m in ("matplotlib", "plotly") if m in sys.modules)
 
     with open(workdir / "manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False)

@@ -244,6 +244,15 @@ class Agent:
 
     # ------------------------------------------------------------------ 실행
     def run(self, user_text: str, on_event: Callable[[AgentEvent], None] | None = None) -> TurnResult:
+        start_len = len(self.messages)
+        try:
+            return self._run(user_text, on_event)
+        except KeyboardInterrupt:
+            # 사용자가 중단하면 이번 질문의 대화 기록을 지워 다음 질문이 깨진 기록 위에서 시작하지 않게 한다.
+            del self.messages[start_len:]
+            raise
+
+    def _run(self, user_text: str, on_event: Callable[[AgentEvent], None] | None = None) -> TurnResult:
         emit = on_event or (lambda e: None)
         self.messages.append({"role": "user", "content": [{"type": "text", "text": user_text}]})
         steps: list[dict] = []
