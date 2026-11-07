@@ -126,8 +126,12 @@ def test_find_latest_date_with_lag(tmp_path):
         latest, n = find_latest_date(_client(hub, tmp_path), spec, {}, today=TODAY)
         assert latest == TODAY - timedelta(days=lag), lag
         assert n <= 15
-    latest, n = find_latest_date(_client(FakeHub(days=1, lag=5000), tmp_path), load_registry().get("floating_population_emd"), {}, today=TODAY)
-    assert latest is None and n == 36
+    spec = load_registry().get("floating_population_emd")
+    # 최근 1년은 31일 구간, 그 앞 15년은 1년 구간으로 찾으므로 약 14년 전에 멈춘 데이터도 찾는다
+    latest, n = find_latest_date(_client(FakeHub(days=1, lag=5000), tmp_path), spec, {}, today=TODAY)
+    assert latest == TODAY - timedelta(days=5000) and n <= 40
+    latest, n = find_latest_date(_client(FakeHub(days=1, lag=7000), tmp_path), spec, {}, today=TODAY)
+    assert latest is None and n == 12 + 15
 
 
 def test_loader_reports_api_failure_reason_when_falling_back(tmp_path):

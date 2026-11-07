@@ -134,21 +134,57 @@ def test_find_latest_day_probe_counts():
         latest, n = find_latest_day(client, spec, {}, today=TODAY)
         assert latest == TODAY - timedelta(days=lag), lag
         assert n <= max_calls, (lag, n)
-    hub = DayHub(latest=TODAY - timedelta(days=2000))
+    # 갱신이 오래전에 멈춘 데이터도 마지막 날짜를 찾는다 (약 12년 전까지)
+    for lag in (2000, 3000):
+        hub = DayHub(latest=TODAY - timedelta(days=lag), first=date(2000, 1, 1))
+        latest, n = find_latest_date(DataHubClient(project_key="KEY", session=hub, sleep_between_pages=0), spec, {}, today=TODAY)
+        assert latest == TODAY - timedelta(days=lag) and n <= 60, (lag, n)
+    hub = DayHub(latest=TODAY - timedelta(days=5000), first=date(2000, 1, 1))
     latest, n = find_latest_date(DataHubClient(project_key="KEY", session=hub, sleep_between_pages=0), spec, {}, today=TODAY)
-    assert latest is None and n < 70
+    assert latest is None and n <= 60
 
 
 def test_month_api_uses_yyyymm_everywhere(tmp_path):
     hub = MonthHub()
     store = _store(hub, tmp_path)
-    ds = store.load("visitors_by_purpose")
-    assert len(ds.df) == 91 and pd.api.types.is_datetime64_any_dtype(ds.df["연월"])
-    assert ds.df["연월"].min() == pd.Timestamp("2018-01-01") and ds.df["연월"].max() == pd.Timestamp("2025-07-01")
+    ds = store.load("visitors_by_purpose")  # 기본 기간 202108 ~ 202507 (실제 응답 기준)
+    assert len(ds.df) == 48 and pd.api.types.is_datetime64_any_dtype(ds.df["연월"])
+    assert ds.df["연월"].min() == pd.Timestamp("2021-08-01") and ds.df["연월"].max() == pd.Timestamp("2025-07-01")
     # 최근 기간을 물어 0건이면 월 형식으로 최신 날짜를 찾는다 (YYYYMMDD 를 보내면 MonthHub 가 실패시킴)
     spec = store.registry.get("visitors_by_purpose")
     latest, _ = find_latest_date(store.client, spec, {}, today=date(2025, 9, 15))
     assert latest is not None and latest.strftime("%Y%m") == "202507"
+
+
+class OldMonthHub(MonthHub):
+    """2016-09 ~ 2018-12 에서 멈춘 월 단위 데이터 (카드 데이터처럼)."""
+
+    def __init__(self):
+        super().__init__()
+        months = pd.period_range("2016-09", "2018-12", freq="M")
+        self.rows = [{"dtYearMonth": m.strftime("%Y%m"), "useCost": "1000"} for m in months]
+
+
+def test_month_api_finds_latest_month_of_a_feed_that_stopped_years_ago():
+    spec = load_registry().get("card_domestic_tourist")
+    hub = OldMonthHub()
+    latest, n = find_latest_date(DataHubClient(project_key="KEY", session=hub, sleep_between_pages=0), spec, {}, today=TODAY)
+    assert latest is not None and latest.strftime("%Y%m") == "201812" and n <= 40
+
+
+def test_snapshot_api_refetches_only_the_latest_day(tmp_path):
+    from dataclasses import replace
+
+    from jeju_agent.datahub.registry import Registry
+
+    hub = DayHub(latest=TODAY - timedelta(days=5))  # 기본 기간(어제)에 자료 없음
+    reg = load_registry()
+    wifi = replace(reg.get("daily_weather"), id="snap", snapshot=True, api_params={"startDate": "{{today-1d}}", "endDate": "{{today-1d}}"})
+    client = DataHubClient(project_key="KEY", session=hub, cache_dir=tmp_path, page_size=100, sleep_between_pages=0)
+    store = DataStore(registry=Registry([wifi]), client=client, raw_dir=tmp_path, today=lambda: TODAY)
+    ds = store.load("snap")
+    assert ds.df["날짜"].dt.date.unique().tolist() == [TODAY - timedelta(days=5)]
+    assert any("가장 최근 하루(2026-11-02)" in n for n in ds.notes)
 
 
 def test_check_and_deep_check_for_day_api(tmp_path):
@@ -169,3 +205,19 @@ def test_samples_follow_registry_columns():
         cols = list(pd.read_csv(SAMPLES_DIR / spec.sample_file, nrows=1, encoding="utf-8-sig").columns)
         assert cols, spec.id
         assert set(cols) <= {c.name for c in spec.columns}, (spec.id, set(cols) - {c.name for c in spec.columns})
+
+
+def test_deep_check_tries_other_date_params_when_day_api_is_empty(tmp_path):
+    from jeju_agent.datahub.apicheck import ApiCheckResult, format_report
+
+    spec = load_registry().get("daily_weather")
+    hub = DayHub(latest=TODAY - timedelta(days=6000), first=date(2000, 1, 1))  # 12년 안에 자료 없음
+    client = DataHubClient(project_key="KEY", session=hub, cache_dir=tmp_path, page_size=2, max_pages=1, sleep_between_pages=0)
+    deep = deep_check(client, spec, {"searchDate": "20261106"}, today=TODAY)
+    assert deep["latest_date"] is None
+    probe = deep["param_probe"]
+    assert set(probe) >= {"searchDate=2026-11-05", "baseDate=20261105", "startDate·endDate=20261105", "날짜 변수 없이"}
+    assert all(v == 0 for v in probe.values())
+    res = ApiCheckResult(id=spec.id, catalog_no=756, name=spec.name, status="empty", total=0, deep=deep)
+    text = format_report([res])
+    assert "찾지 못함 (10여 년 전까지 확인" in text and "다른 날짜 변수 시험: searchDate=2026-11-05 → 0건" in text

@@ -171,6 +171,32 @@ def deep_check(
             out["errors"].append(f"최신 날짜 확인: {e}")
     out["window"] = {k: window.get(k) for k in window_keys} if window_keys else {}
 
+    # 1-1) 하루 단위 API 인데 어느 날짜에도 데이터가 없으면, 다른 날짜 변수 이름·형식을 시험해 본다
+    if spec.day_param and "latest_date" in out and not out["latest_date"]:
+        say("다른 날짜 변수 시험 …")
+        skip = {spec.day_param, *spec.date_params[:2]}
+        base = {k: v for k, v in params.items() if k not in skip}
+        probes: dict = {}
+        for d in (today - timedelta(days=2), date(2024, 6, 1)):
+            ymd8, dash = d.strftime("%Y%m%d"), d.isoformat()
+            variants = {
+                f"{spec.day_param}={dash}": {spec.day_param: dash},
+                f"baseDate={ymd8}": {"baseDate": ymd8},
+                f"startDate·endDate={ymd8}": {"startDate": ymd8, "endDate": ymd8},
+            }
+            for label, extra in variants.items():
+                try:
+                    r = page({**base, **extra}, 1, 1)
+                    probes[label] = r.total if r.total is not None else len(r.rows)
+                except DataHubError as e:
+                    probes[label] = f"오류: {str(e)[:80]}"
+        try:
+            r = page(base, 1, 1)
+            probes["날짜 변수 없이"] = r.total if r.total is not None else len(r.rows)
+        except DataHubError as e:
+            probes["날짜 변수 없이"] = f"오류: {str(e)[:80]}"
+        out["param_probe"] = probes
+
     # 2) 페이지 넘김과 응답 메타
     first_row: dict = {}
     window_total = None
@@ -260,7 +286,10 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
                         f"  - 가장 최근 데이터 날짜: {d['latest_date']} (오늘보다 {d.get('lag_days')}일 전, 확인 요청 {d.get('probe_requests')}회)"
                     )
                 else:
-                    lines.append(f"  - 가장 최근 데이터 날짜: 최근 3년 안에서 찾지 못함 (확인 요청 {d.get('probe_requests')}회)")
+                    lines.append(f"  - 가장 최근 데이터 날짜: 찾지 못함 (10여 년 전까지 확인, 요청 {d.get('probe_requests')}회)")
+            if d.get("param_probe"):
+                tried = ", ".join(f"{k} → {v if isinstance(v, str) else f'{v:,}건'}" for k, v in d["param_probe"].items())
+                lines.append(f"  - 다른 날짜 변수 시험: {tried}")
             if d.get("window"):
                 total = d.get("window_total")
                 lines.append(
