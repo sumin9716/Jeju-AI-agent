@@ -337,6 +337,8 @@ class DataStore:
         }.get(prefer, ["api", "file", "sample"])
         labels = {"api": "Open API", "file": "내려받은 파일", "sample": "합성 샘플"}
         errors: list[str] = []
+        retry_worth = False  # 질의 변수만 고치면 되는 오류였는지
+        last_kind = "other"
         for source in order:
             # 자동 모드에서는 준비되지 않은 출처(키·api_id 없음, 파일 없음)를 조용히 건너뛴다.
             if prefer == "auto" and source == "api" and not (
@@ -354,15 +356,22 @@ class DataStore:
                     ds = self._load_sample(spec, max_rows)
             except (DataHubError, FileNotFoundError) as e:
                 errors.append(f"{labels[source]}: {e}")
+                last_kind = getattr(e, "kind", "other")
+                if last_kind in DataHubError.RETRYABLE_WITH_NEW_PARAMS:
+                    retry_worth = True
                 continue
             if errors:
-                ds.notes.insert(
-                    0,
-                    "⚠️ 앞선 출처를 쓰지 못해 대체했습니다 → " + " | ".join(errors)
-                    + " (질의 변수를 고쳐 source='api' 로 다시 시도할 수 있습니다)",
+                advice = (
+                    "질의 변수를 고쳐 source='api' 로 다시 시도할 수 있습니다."
+                    if retry_worth
+                    else "방화벽·네트워크·인증 문제라 다시 시도해도 같은 결과입니다. 대체된 데이터로 진행하고 답변에 그 사실을 밝히세요."
                 )
+                ds.notes.insert(0, "⚠️ 앞선 출처를 쓰지 못해 대체했습니다 → " + " | ".join(errors) + f" ({advice})")
             return ds
-        raise DataHubError(f"'{spec.name}' 을(를) 불러올 수 없습니다. " + (" | ".join(errors) or "사용 가능한 출처가 없습니다."))
+        raise DataHubError(
+            f"'{spec.name}' 을(를) 불러올 수 없습니다. " + (" | ".join(errors) or "사용 가능한 출처가 없습니다."),
+            kind=last_kind,
+        )
 
     def _load_api(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
         if spec.access not in ("api", "api,file"):
