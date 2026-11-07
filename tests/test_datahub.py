@@ -111,3 +111,20 @@ def test_client_masks_project_key_in_errors():
     with pytest.raises(DataHubError) as ei:
         next(c.iter_pages("API"))
     assert "SECRETKEY123" not in str(ei.value) and "{PROJECT_KEY}" in str(ei.value)
+
+
+def test_lodging_and_place_api_fields_are_mapped_to_korean_columns():
+    r = load_registry()
+    lodging = r.get("tourist_accommodations")
+    raw = pd.DataFrame({
+        "companyName": ["샘플호텔"], "bizSmallType": ["관광호텔업"], "roomCount": ["120"],
+        "openStatus": ["영업/정상"], "addressDoro": ["제주특별자치도 제주시 애월읍 샘플로 1"], "licensingDate": ["20190305"],
+    })
+    out = normalize_dataframe(raw, lodging)
+    assert {"업소명", "업종", "객실수", "영업상태", "도로명주소", "인허가일자"} <= set(out.columns)
+    assert out["객실수"].tolist() == [120] and str(out["인허가일자"].dtype).startswith("datetime64")
+    for key in ("oreum_locations", "museum_locations", "souvenir_shops"):
+        spec = r.get(key)
+        assert spec.api_id and set(spec.filter_params) == {"placeName"}
+        place = normalize_dataframe(pd.DataFrame({" placeName": ["샘플"], "latitude": ["33.45"], "longitude": ["126.56"]}), spec)
+        assert list(place.columns) == ["장소명", "위도", "경도"] and place["위도"].iloc[0] == 33.45  # 앞 공백 컬럼명도 처리

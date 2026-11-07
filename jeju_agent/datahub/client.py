@@ -34,14 +34,24 @@ ERROR_STATUS = {"fail", "failed", "error", "err", "unauthorized", "forbidden", "
 
 
 class DataHubError(RuntimeError):
-    """Open API 호출 실패 (설정 누락, 네트워크, 인증, 응답 형식 오류)."""
+    """Open API 호출 실패 (설정 누락, 네트워크, 인증, 응답 형식 오류).
+
+    kind 로 원인을 나눠, 다시 시도할 가치가 있는지(질의 변수 오류) 아닌지(방화벽·네트워크·인증)를 판단한다.
+    config | params | auth | not_found | blocked | network | server | format | other
+    """
+
+    RETRYABLE_WITH_NEW_PARAMS = {"params"}
+
+    def __init__(self, message: str, kind: str = "other"):
+        super().__init__(message)
+        self.kind = kind
 
 
 class PageSizeTooLarge(DataHubError):
     """서버가 쪽당 건수(limit) 상한을 넘었다고 거부함. max_size 는 서버가 알려준 최대값."""
 
     def __init__(self, message: str, max_size: int):
-        super().__init__(message)
+        super().__init__(message, kind="params")
         self.max_size = max_size
 
 
@@ -164,9 +174,9 @@ class DataHubClient:
 
     def build_url(self, api_id: str) -> str:
         if not self.configured:
-            raise DataHubError("JEJUDATAHUB_PROJECT_KEY 가 설정되지 않았습니다 (.env 참고).")
+            raise DataHubError("JEJUDATAHUB_PROJECT_KEY 가 설정되지 않았습니다 (.env 참고).", kind="config")
         if not api_id:
-            raise DataHubError("이 데이터셋의 api_id 가 레지스트리에 비어 있습니다 (registry.yaml 참고).")
+            raise DataHubError("이 데이터셋의 api_id 가 레지스트리에 비어 있습니다 (registry.yaml 참고).", kind="config")
         return f"{self.base_url}/{api_id}/{self.project_key}"
 
     # ------------------------------------------------------------------ 응답 파싱
@@ -240,26 +250,31 @@ class DataHubClient:
         try:
             resp = self.session.get(url, params=q, timeout=self.timeout)
         except requests.RequestException as e:  # 네트워크 단절, DNS 실패 등
-            raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {self._mask(str(e))}") from e
+            raise DataHubError(f"네트워크 오류로 제주데이터허브에 연결하지 못했습니다: {self._mask(str(e))}", kind="network") from e
         if resp.status_code in (401, 403):
             raise DataHubError(
                 f"인증 실패({resp.status_code}): 프로젝트 키 또는 API 활용 신청 상태를 확인하세요. "
-                f"허브 메시지: {self._mask(hub_error_message(resp.text))}"
+                f"허브 메시지: {self._mask(hub_error_message(resp.text))}",
+                kind="auth",
             )
         if resp.status_code == 404:
-            raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.")
+            raise DataHubError("API 주소를 찾을 수 없습니다(404): api_id 를 확인하세요.", kind="not_found")
         if resp.status_code >= 400:
             message = f"허브가 요청을 거부했습니다(HTTP {resp.status_code}): {self._mask(hub_error_message(resp.text))}"
             cap = re.search(r"less than or equal to (\d+)", resp.text or "")
             if cap and (self.size_param in (resp.text or "")) and int(cap.group(1)) < int(q[self.size_param]):
                 raise PageSizeTooLarge(message, max_size=int(cap.group(1)))
-            raise DataHubError(message)
+            raise DataHubError(message, kind="params" if 400 <= resp.status_code < 500 else "server")
         try:
             payload = resp.json()
         except ValueError as e:
             snippet = re.sub(r"<[^>]+>", " ", resp.text[:600])
             snippet = re.sub(r"\s+", " ", snippet).strip()[:300]
-            raise DataHubError(f"JSON 이 아닌 응답: {self._mask(snippet)}") from e
+            blocked = "firewall" in snippet.lower() or "blocked" in snippet.lower()
+            raise DataHubError(
+                ("허브 웹 방화벽이 이 컴퓨터의 요청을 차단했습니다: " if blocked else "JSON 이 아닌 응답: ") + self._mask(snippet),
+                kind="blocked" if blocked else "format",
+            ) from e
         rows, total = self.parse_payload(payload)
         meta = {k: v for k, v in payload.items() if not isinstance(v, (list, dict))} if isinstance(payload, dict) else {}
         return PageResult(rows=rows, total=total, meta=meta)
@@ -291,7 +306,8 @@ class DataHubClient:
                 if prev_sig is not None and sig == prev_sig:
                     raise DataHubError(
                         f"페이지 변수({self.page_param})가 무시되어 같은 페이지가 반복됩니다. "
-                        "registry.yaml 의 api_paging 설정을 확인하세요."
+                        "registry.yaml 의 api_paging 설정을 확인하세요.",
+                        kind="format",
                     )
                 prev_sig = sig
             yield page, rows, res.total

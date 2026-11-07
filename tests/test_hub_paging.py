@@ -141,6 +141,24 @@ def test_loader_reports_api_failure_reason_when_falling_back(tmp_path):
     assert "Open API" in ds.notes[0] and "잘못된 파라미터" in ds.notes[0] and "source='api'" in ds.notes[0]
 
 
+def test_loader_does_not_suggest_retry_when_firewall_blocks(tmp_path):
+    class Blocked(FakeResp):  # 방화벽 차단 페이지는 JSON 이 아니다
+        def json(self):
+            raise ValueError("not json")
+
+    class FirewallHub:
+        def get(self, url, params=None, timeout=None):
+            return Blocked(200, text="<html><h2>The request / response that are contrary to the Web firewall security policies have been blocked.</h2></html>")
+
+    store = DataStore(client=DataHubClient(project_key="KEY", session=FirewallHub(), cache_dir=tmp_path), raw_dir=tmp_path)
+    ds = store.load("floating_population_emd")
+    assert ds.provenance == "sample"
+    assert "방화벽" in ds.notes[0] and "다시 시도해도 같은 결과" in ds.notes[0] and "source='api' 로 다시 시도할 수" not in ds.notes[0]
+    with pytest.raises(DataHubError) as ei:
+        store.load("floating_population_emd", prefer="api")
+    assert ei.value.kind == "blocked"
+
+
 def test_loader_renames_api_rows(tmp_path):
     hub = FakeHub(days=5, per_day=3, lag=3)
     window = {"startDate": (TODAY - timedelta(days=7)).strftime("%Y%m%d"), "endDate": TODAY.strftime("%Y%m%d")}

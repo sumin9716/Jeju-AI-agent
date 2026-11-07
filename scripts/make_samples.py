@@ -302,23 +302,48 @@ def make_ev() -> pd.DataFrame:
 
 
 def make_accommodations() -> pd.DataFrame:
-    types = ["호텔", "콘도미니엄", "휴양펜션", "일반숙박", "호스텔"]
+    """관광 숙박업 (No.518) 응답 필드 구조를 흉내 낸 가짜 데이터. 읍면동은 주소 문자열에만 들어 있다."""
+    r = np.random.default_rng(SEED + 518)
+    types = [("관광호텔업", "호텔업"), ("가족호텔업", "호텔업"), ("휴양펜션업", "관광편의시설업"), ("호스텔업", "호텔업"), ("휴양콘도미니엄업", "휴양콘도미니엄업")]
     rows = []
     for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, lat, lon in EMD:
         n = int(4 + base_visit / 900 * tourism + base_res / 20000)
         for k in range(n):
-            t = str(rng.choice(types, p=[0.25, 0.1, 0.35, 0.22, 0.08]))
-            rooms = {"호텔": int(rng.integers(30, 300)), "콘도미니엄": int(rng.integers(40, 250)), "휴양펜션": int(rng.integers(3, 20)), "일반숙박": int(rng.integers(8, 40)), "호스텔": int(rng.integers(10, 60))}[t]
+            small, large = types[int(r.choice(len(types), p=[0.25, 0.1, 0.4, 0.15, 0.1]))]
+            rooms = {"관광호텔업": int(r.integers(30, 300)), "가족호텔업": int(r.integers(30, 150)), "휴양펜션업": int(r.integers(3, 20)), "호스텔업": int(r.integers(10, 60)), "휴양콘도미니엄업": int(r.integers(40, 250))}[small]
+            year = int(np.clip(2025 - r.exponential(8), 1990, 2025))
             rows.append(
                 {
-                    "업소명": f"{emd} {t} {k + 1}",
-                    "업종": t,
-                    "시군구": sgg,
-                    "읍면동": emd,
+                    "업소명": f"샘플 {emd} {small[:-1]} {k + 1}",
+                    "업종": small,
+                    "업종대분류": large,
                     "객실수": rooms,
-                    "영업상태": "영업" if rng.random() < 0.9 else "휴업",
-                    "위도": round(lat + rng.normal(0, 0.02), 5),
-                    "경도": round(lon + rng.normal(0, 0.02), 5),
+                    "영업상태": "영업/정상" if r.random() < 0.88 else "휴업",
+                    "도로명주소": f"제주특별자치도 {sgg} {emd} 샘플로 {int(r.integers(1, 400))}",
+                    "지번주소": f"제주특별자치도 {sgg} {emd} {int(r.integers(1, 2000))}",
+                    "인허가일자": f"{year}{int(r.integers(1, 13)):02d}{int(r.integers(1, 28)):02d}",
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def make_places(kind: str, counts: dict[str, float], categories: list[str]) -> pd.DataFrame:
+    """오름·박물관·기념품 가게 위치 정보 (placeName·category·주소·위경도) 구조의 가짜 데이터."""
+    r = np.random.default_rng(SEED + sum(ord(ch) for ch in kind))
+    rows = []
+    n = 0
+    for emd, sgg, base_res, work_ratio, base_visit, tourism, stn, lat, lon in EMD:
+        for _ in range(int(round(counts.get("base", 1) + counts.get("tourism", 2) * tourism))):
+            n += 1
+            rows.append(
+                {
+                    "장소명": f"샘플 {kind} {n:02d}",
+                    "분류": str(r.choice(categories)),
+                    "도로명주소": f"제주특별자치도 {sgg} {emd} 샘플로 {int(r.integers(1, 400))}",
+                    "지번주소": f"제주특별자치도 {sgg} {emd} {int(r.integers(1, 2000))}",
+                    "위도": round(lat + float(r.normal(0, 0.03)), 5),
+                    "경도": round(lon + float(r.normal(0, 0.03)), 5),
+                    "전화번호": "" if kind == "오름" else f"064-{int(r.integers(700, 800))}-{int(r.integers(1000, 9999))}",
                 }
             )
     return pd.DataFrame(rows)
@@ -372,6 +397,9 @@ def main() -> None:
     foreign_long, foreign_short = make_foreign(weather)
     outputs["floating_population_foreign_long_sample.csv"] = foreign_long
     outputs["floating_population_foreign_short_sample.csv"] = foreign_short
+    outputs["oreum_locations_sample.csv"] = make_places("오름", {"base": 1, "tourism": 4}, ["오름"])
+    outputs["museum_locations_sample.csv"] = make_places("박물관", {"base": 0, "tourism": 3}, ["박물관", "미술관", "전시관"])
+    outputs["souvenir_shops_sample.csv"] = make_places("기념품가게", {"base": 1, "tourism": 5}, ["기념품", "특산품", "공예품"])
     for name, df in outputs.items():
         path = SAMPLES_DIR / name
         df.to_csv(path, index=False, encoding="utf-8-sig")
@@ -383,7 +411,7 @@ def main() -> None:
         "값은 실제 통계가 아닙니다. 실제 분석은 `.env` 에 프로젝트 키를 넣어 Open API 로 수집하거나 "
         "허브에서 내려받은 파일을 `data/raw/` 에 넣어 수행하세요.\n\n"
         f"- 생성 시드: {SEED}\n- 기간: 2024년(일 단위), 카드 2017~2018(월), 입도객 2018~2025(월), 관광지 2019~2024(월)\n"
-        "- 위치 데이터(와이파이 AP·전기차 충전소·관광 숙박업)는 읍면동 중심 좌표 주변에 난수로 배치한 가짜 위치입니다.\n",
+        "- 위치 데이터(와이파이 AP·전기차 충전소·오름·박물관·기념품 가게)는 읍면동 중심 좌표 주변에 난수로 배치한 가짜 위치이며, 이름도 '샘플 …' 형식의 가짜입니다.\n",
         encoding="utf-8",
     )
 
