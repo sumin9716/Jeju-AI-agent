@@ -69,7 +69,14 @@ python -m jeju_agent.cli ask "비 오는 날에는 버스 이용객이 얼마나
 | **내려받은 파일** | 허브에서 CSV/XLSX 를 받아 `data/raw/` 에 저장 | 레지스트리의 `file_glob` 패턴(예: `*유동인구*.csv`)과 맞으면 등록 데이터로 자동 인식. 그 밖의 **어떤 파일이든** `load_file` 도구로 불러와 분석(숫자·날짜 자동 추정, 제목 행 건너뛰기, 엑셀 시트 선택) |
 | **합성 샘플** | 기본 제공 | 실제 통계가 아님. 구조 확인·시연·테스트용 |
 
-출처 우선순위는 `API → 파일 → 샘플` 이며, 답변·보고서마다 어떤 출처를 썼는지 표시됩니다. 현재 상태는 `python -m jeju_agent.cli data status` 로 확인합니다. Open API 연결 점검: `python -m jeju_agent.cli data test-api floating_population_emd --param startDate=20240101 --param endDate=20240131`.
+출처 우선순위는 `API → 파일 → 샘플` 이며, 답변·보고서마다 어떤 출처를 썼는지 표시됩니다. 현재 상태는 `python -m jeju_agent.cli data status` 로 확인합니다.
+
+**Open API 연결 점검**: 아래 명령은 `api_id` 가 있는 등록 데이터셋마다 첫 몇 건만 호출해 성공 여부, 전체 건수, 응답 컬럼, 레지스트리에 없는 컬럼, 예시 행을 보고서로 출력하고 `outputs/api_check_*.json` 에 저장합니다. 이 보고서로 `registry.yaml` 의 `api_params`·`rename` 을 실제 응답에 맞춥니다.
+```bash
+python -m jeju_agent.cli data check-api
+python -m jeju_agent.cli data check-api --dataset floating_population_emd --param startDate=20240101 --param endDate=20240107
+```
+제주데이터허브는 웹 방화벽이 있어 클라우드 서버에서의 호출은 차단될 수 있습니다. 센터 PC 나 개인 PC 에서 실행하세요.
 
 ## 구조
 
@@ -114,6 +121,7 @@ python -m jeju_agent.cli ask "질문" [--model ...] [--effort low|medium|high|xh
 python -m jeju_agent.cli chat
 python -m jeju_agent.cli catalog search "감귤 가격" [--top-k 10] [--api-only] [--category "농축수산"]
 python -m jeju_agent.cli data status | load <id|No.|이름> [--source auto|api|file|sample] | test-api <id> [--param k=v]
+python -m jeju_agent.cli data check-api [--dataset <id>] [--param k=v] [--rows 2]
 python -m jeju_agent.cli scenario run scenarios/*.yaml [--quiet]
 python -m jeju_agent.cli samples
 ```
@@ -139,6 +147,9 @@ API 키 없이 실행됩니다(스크립트 백엔드로 전체 흐름 검증). 
 | `Claude API 키가 올바르지 않습니다` | `.env` 의 `ANTHROPIC_API_KEY` 확인. 콘솔(console.anthropic.com)에서 발급 |
 | `요청이 너무 많아 잠시 제한` | API 사용량 한도. 1분 뒤 재시도 |
 | `JEJUDATAHUB_PROJECT_KEY 가 설정되지 않았습니다` | 허브 마이페이지에서 프로젝트 생성 후 키 입력. 없으면 파일/샘플로 동작 |
+| `ANTHROPIC_API_KEY: ✖ 예시값이 그대로 있습니다` | `.env` 의 키 자리에 예시 문구가 남아 있음. 실제 키로 교체 |
+| `Web firewall security policies have been blocked` | 허브 방화벽이 요청을 차단. 클라우드 서버가 아닌 센터·개인 PC 에서 실행 |
+| `setup.bat` 이 Python 을 못 찾음 | Microsoft Store 바로가기만 있는 경우. python.org 에서 설치하고 "Add python.exe to PATH" 체크 |
 | `api_id 가 레지스트리에 비어 있습니다` | 허브 데이터 상세 > API 탭의 고유 ID 를 `registry.yaml` 에 입력 |
 | `인증 실패(401/403)` | 프로젝트에서 해당 API 활용 신청이 승인되었는지 확인 |
 | `제한 시간 90초를 넘겨` | 코드 실행 초과. 모델이 집계 범위를 줄여 재시도함. `JEJU_AGENT_SANDBOX_TIMEOUT` 로 조정 |

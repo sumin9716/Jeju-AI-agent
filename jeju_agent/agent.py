@@ -25,6 +25,17 @@ from .tools.executor import tool_input_summary
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
+def usage_summary(usage: dict | None) -> str:
+    """캐시로 읽은·저장한 입력까지 합친 전체 입력 토큰과 출력 토큰을 한 줄로 보여준다."""
+    usage = usage or {}
+    inp = int(usage.get("input_tokens", 0) or 0)
+    cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+    cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+    out = int(usage.get("output_tokens", 0) or 0)
+    total_in = inp + cache_read + cache_write
+    return f"입력 {total_in:,} (캐시 읽기 {cache_read:,} · 캐시 저장 {cache_write:,}) / 출력 {out:,}"
+
+
 class AgentError(RuntimeError):
     """사용자에게 보여줄 한국어 메시지를 담은 에이전트 오류."""
 

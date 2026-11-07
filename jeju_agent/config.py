@@ -27,6 +27,15 @@ load_dotenv(ROOT_DIR / ".env")
 VALID_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
+def is_real_secret(value: str | None) -> bool:
+    """빈 값이나 'sk-ant-...' 같은 예시값은 키로 인정하지 않는다."""
+    v = (value or "").strip()
+    if not v:
+        return False
+    lowered = v.lower()
+    return not ("..." in v or "…" in v or lowered.startswith("<") or lowered in {"sk-ant-", "your-api-key", "changeme"})
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.getenv(name, "").strip()
     try:
@@ -62,11 +71,11 @@ class Settings:
 
     @property
     def has_anthropic_key(self) -> bool:
-        return bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
+        return is_real_secret(os.getenv("ANTHROPIC_API_KEY")) or is_real_secret(os.getenv("ANTHROPIC_AUTH_TOKEN"))
 
     @property
     def has_datahub_key(self) -> bool:
-        return bool(self.datahub_project_key)
+        return is_real_secret(self.datahub_project_key)
 
     @property
     def use_thinking(self) -> bool:
