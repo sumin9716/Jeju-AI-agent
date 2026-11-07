@@ -29,6 +29,8 @@ class ApiCheckResult:
     unknown_columns: list[str] = field(default_factory=list)
     sample: list[dict] = field(default_factory=list)
     error: str = ""
+    error_kind: str = ""
+    hint: str = ""
     deep: dict = field(default_factory=dict)
 
 
@@ -50,7 +52,7 @@ def check_apis(
             first = client.for_paging(spec.api_paging).fetch_page(spec.api_id, params, page=1, size=rows)
             page_rows, total = first.rows, first.total
         except DataHubError as e:
-            res.status, res.error = "error", str(e)
+            res.status, res.error, res.error_kind = "error", str(e), getattr(e, "kind", "")
             results.append(res)
             continue
         columns: list[str] = []
@@ -64,8 +66,39 @@ def check_apis(
         res.columns = columns
         res.unknown_columns = [c for c in columns if c not in known]
         res.sample = [{k: (None if v is None else str(v)[:80]) for k, v in row.items()} for row in page_rows[:rows]]
+        if not page_rows and len(spec.date_params) >= 2:
+            res.hint = (
+                "점검 기간에 자료가 없습니다. 허브 공개가 늦어 최근 날짜가 비어 있는 경우가 많습니다. "
+                "--deep 을 붙이면 가장 최근 날짜를 찾아 다시 점검합니다. 질문할 때는 에이전트가 최근 날짜를 알아서 찾습니다."
+            )
         results.append(res)
+    add_hints(results)
     return results
+
+
+def add_hints(results: list[ApiCheckResult]) -> None:
+    """오류 종류와 다른 API 의 성공 여부를 보고, 사용자가 할 일을 hint 에 적는다."""
+    any_ok = any(r.status in ("ok", "empty") for r in results)
+    for r in results:
+        if r.status != "error" or r.hint:
+            continue
+        if r.error_kind == "auth":
+            r.hint = (
+                "같은 프로젝트 키로 다른 API 는 성공했습니다. 이 API 가 프로젝트에 담겨 있지 않은 경우가 가장 흔합니다. "
+                "제주데이터허브에서 이 데이터의 Open API 를 같은 프로젝트에 추가한 뒤 다시 점검하세요. "
+                "추가한 뒤에도 403 이면 API 고유 ID 가 다를 수 있으니, 데이터 상세 페이지의 요청 주소를 확인하세요."
+                if any_ok
+                else "성공한 API 가 하나도 없습니다. .env 의 JEJUDATAHUB_PROJECT_KEY(프로젝트 키)가 맞는지, "
+                "이 API 가 프로젝트에 담겨 있는지 확인하세요."
+            )
+        elif r.error_kind == "not_found":
+            r.hint = "API 고유 ID 가 틀렸을 수 있습니다. 데이터 상세 페이지의 요청 주소에서 ID 를 다시 확인하세요."
+        elif r.error_kind == "blocked":
+            r.hint = "허브 웹 방화벽이 이 컴퓨터를 막았습니다. 클라우드 서버가 아닌 집·학교 PC 에서 실행하세요."
+        elif r.error_kind == "network":
+            r.hint = "인터넷 연결을 확인한 뒤 다시 실행하세요."
+        elif r.error_kind == "params":
+            r.hint = "질의 변수가 맞지 않습니다. 허브 메시지를 보고 --param 이름=값 으로 바꿔 다시 점검하세요."
 
 
 def _ymd(d: date) -> str:
@@ -166,7 +199,10 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
     for r in results:
         lines.append(f"## {r.id} (No.{r.catalog_no}) {r.name}")
         if r.status == "no_api_id":
-            lines.append("- 상태: ○ api_id 미입력. 허브 데이터 상세 페이지의 API 탭에서 고유 ID 를 확인해 registry.yaml 에 넣으세요.")
+            lines.append(
+                "- 상태: ○ api_id 미입력. 허브 데이터 상세 페이지의 API 요청 주소(…/api/proxy/고유ID/…)에서 "
+                "고유 ID 를 확인해 registry.yaml 에 넣거나 Claude 에게 알려 주세요."
+            )
         elif r.status == "error":
             lines.append(f"- 상태: ✖ 실패: {r.error}")
         else:
@@ -177,6 +213,8 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
                 lines.append("- 레지스트리에 없는 컬럼: " + ", ".join(r.unknown_columns))
             for i, row in enumerate(r.sample, 1):
                 lines.append(f"- 예시 {i}: " + json.dumps(row, ensure_ascii=False))
+        if r.hint:
+            lines.append(f"- 도움말: {r.hint}")
         if r.params:
             lines.append("- 질의 변수: " + json.dumps(r.params, ensure_ascii=False))
         if r.deep:
@@ -217,10 +255,34 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
     n_err = sum(r.status == "error" for r in results)
     n_none = sum(r.status == "no_api_id" for r in results)
     lines.append(f"요약: 성공 {n_ok} · 실패 {n_err} · api_id 미입력 {n_none}")
+    todo = _todo_lines(results)
+    if todo:
+        lines += ["", "할 일:"] + todo
+    lines.append("")
     lines.append("이 출력 전체를 복사해 Claude 에게 보내면 registry.yaml 의 api_params·rename 을 실제 응답에 맞춰 줍니다.")
     if saved_path:
         lines.append(f"결과 파일: {saved_path}")
     return "\n".join(lines)
+
+
+def _todo_lines(results: list[ApiCheckResult]) -> list[str]:
+    def names(rs: list[ApiCheckResult]) -> str:
+        return ", ".join(f"No.{r.catalog_no} {r.name}" for r in rs)
+
+    any_ok = any(r.status in ("ok", "empty") for r in results)
+    out: list[str] = []
+    auth = [r for r in results if r.status == "error" and r.error_kind == "auth"]
+    if auth and any_ok:
+        out.append(f"- 허브 프로젝트에 추가할 API: {names(auth)}")
+    elif auth:
+        out.append("- .env 의 JEJUDATAHUB_PROJECT_KEY 가 맞는지 확인")
+    missing = [r for r in results if r.status == "error" and r.error_kind == "not_found"]
+    if missing:
+        out.append(f"- API 고유 ID 다시 확인: {names(missing)}")
+    empty = [r for r in results if r.status == "empty" and r.hint]
+    if empty:
+        out.append(f"- 최근 날짜 확인(--deep): {names(empty)}")
+    return out
 
 
 def save_results(results: list[ApiCheckResult], out_dir: Path) -> Path:

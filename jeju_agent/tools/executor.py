@@ -12,6 +12,7 @@ from ..catalog import Catalog, expand_query
 from ..charts import ChartError, build_chart
 from ..config import CHART_DIR, REPORT_DIR, Settings
 from ..datahub import DataHubError, DataStore
+from ..datahub.loaders import API_UNAVAILABLE_LABELS
 from ..report import write_report
 from ..sandbox import run_code
 from ..session import AnalysisSession
@@ -97,7 +98,11 @@ class ToolExecutor:
 
     def _source_label(self, spec) -> str:
         pref = self.store.preferred_source(spec)
-        return {"api": "Open API 준비됨", "file": "내려받은 파일 있음", "sample": "합성 샘플만 있음", None: "사용 불가"}[pref]
+        label = {"api": "Open API 준비됨", "file": "내려받은 파일 있음", "sample": "합성 샘플만 있음", None: "사용 불가"}[pref]
+        reason = self.store.api_unavailable_reason(spec)
+        if pref != "api" and reason:
+            label += f" ({API_UNAVAILABLE_LABELS[reason]})"
+        return label
 
     def list_datasets(self) -> ToolOutcome:
         lines = ["등록 데이터셋 (load_dataset 으로 불러올 수 있음):", "", "| id | No. | 데이터명 | 제공 방식 | 현재 출처 | 주요 컬럼 |", "|---|---|---|---|---|---|"]
