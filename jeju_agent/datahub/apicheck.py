@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -34,17 +35,31 @@ class ApiCheckResult:
     deep: dict = field(default_factory=dict)
 
 
+def status_line(r: "ApiCheckResult") -> str:
+    """점검 중 화면에 바로 보여 줄 한 줄 요약."""
+    head = f"No.{r.catalog_no} {r.name}"
+    if r.status == "no_api_id":
+        return f"○ {head} — api_id 미입력"
+    if r.status == "error":
+        return f"✖ {head} — {r.error.split(':')[0]}"
+    total = f"전체 {r.total:,}건" if r.total is not None else "건수 알 수 없음"
+    return f"✔ {head} — 성공 ({total}{', 이번 기간 0건' if r.status == 'empty' else ''})"
+
+
 def check_apis(
     client: DataHubClient,
     specs: list[DatasetSpec],
     extra_params: dict | None = None,
     rows: int = 2,
+    log=None,
 ) -> list[ApiCheckResult]:
+    say = log or (lambda _m: None)
     results: list[ApiCheckResult] = []
     for spec in specs:
         res = ApiCheckResult(id=spec.id, catalog_no=spec.catalog_no, name=spec.name, status="no_api_id")
         if not spec.api_id:
             results.append(res)
+            say(status_line(res))
             continue
         params = to_api_params(spec, render_params({**(spec.api_params or {}), **(extra_params or {})}))
         res.params = params
@@ -54,6 +69,7 @@ def check_apis(
         except DataHubError as e:
             res.status, res.error, res.error_kind = "error", str(e), getattr(e, "kind", "")
             results.append(res)
+            say(status_line(res))
             continue
         columns: list[str] = []
         for row in page_rows:
@@ -72,6 +88,7 @@ def check_apis(
                 "--deep 을 붙이면 가장 최근 날짜를 찾아 다시 점검합니다. 질문할 때는 에이전트가 최근 날짜를 알아서 찾습니다."
             )
         results.append(res)
+        say(status_line(res))
     add_hints(results)
     return results
 
@@ -115,19 +132,30 @@ def deep_check(
     params: dict,
     today: date | None = None,
     big_size: int = 1000,
+    log=None,
+    max_filters: int = 4,
+    pause: float = 0.0,
 ) -> dict:
     """가장 최근 데이터 날짜, 페이지 넘김, 쪽당 최대 건수, 응답 메타, 필터 변수 동작을 확인한다.
 
     단계마다 따로 오류를 기록하므로 한 단계가 실패해도 나머지 결과는 남는다.
+    log 로 단계마다 진행 상황을 알리고, 거르기 변수는 글자 컬럼 max_filters 개까지만 확인한다.
     """
+    say = log or (lambda _m: None)
     today = today or date.today()
     c = client.for_paging(spec.api_paging)
     out: dict = {"errors": []}
     window = dict(params)
 
+    def page(p: dict, n: int, size: int):
+        if pause:
+            time.sleep(pause)
+        return c.fetch_page(spec.api_id, p, page=n, size=size)
+
     # 1) 가장 최근 데이터 날짜 → 점검 기간을 그 날짜 기준 최근 7일로 (하루만 받는 API 는 그날 하루)
     window_keys = [spec.day_param] if spec.day_param else spec.date_params[:2]
     if spec.day_param or len(spec.date_params) >= 2:
+        say("가장 최근 데이터 날짜 확인 …")
         try:
             latest, n = find_latest_date(c, spec, params, today=today)
             out["latest_date"] = latest.isoformat() if latest else None
@@ -146,9 +174,10 @@ def deep_check(
     # 2) 페이지 넘김과 응답 메타
     first_row: dict = {}
     window_total = None
+    say("페이지 넘김 확인 …")
     try:
-        p1 = c.fetch_page(spec.api_id, window, page=1, size=2)
-        p2 = c.fetch_page(spec.api_id, window, page=2, size=2)
+        p1 = page(window, 1, 2)
+        p2 = page(window, 2, 2)
         out["meta"] = p1.meta
         window_total = p1.total
         out["window_total"] = window_total
@@ -165,13 +194,14 @@ def deep_check(
         out["errors"].append(f"페이지 넘김: {e}")
 
     # 3) 쪽당 최대 건수
+    say("쪽당 최대 건수 확인 …")
     try:
-        big = c.fetch_page(spec.api_id, window, page=1, size=big_size)
+        big = page(window, 1, big_size)
         out["page_size"] = {"requested": big_size, "returned": len(big.rows), "max": None}
     except PageSizeTooLarge as e:
         out["page_size"] = {"requested": big_size, "returned": None, "max": e.max_size}
         try:
-            ok = c.fetch_page(spec.api_id, window, page=1, size=e.max_size)
+            ok = page(window, 1, e.max_size)
             out["page_size"]["returned"] = len(ok.rows)
         except DataHubError as e2:
             out["errors"].append(f"쪽당 최대 건수: {e2}")
@@ -181,11 +211,15 @@ def deep_check(
     # 4) 필터 변수: 응답의 글자 컬럼 이름을 같은 이름의 질의 변수로 넣어 건수가 줄어드는지 본다
     filters: dict = {}
     if first_row and window_total:
-        for col, val in first_row.items():
-            if val is None or _looks_numeric(val) or col in spec.date_params or col == spec.day_param:
-                continue
+        cols = [
+            (col, val) for col, val in first_row.items()
+            if val is not None and not _looks_numeric(val) and col not in spec.date_params and col != spec.day_param
+        ][:max_filters]
+        if cols:
+            say(f"거르기 변수 {len(cols)}개 확인 …")
+        for col, val in cols:
             try:
-                r = c.fetch_page(spec.api_id, {**window, col: val}, page=1, size=1)
+                r = page({**window, col: val}, 1, 1)
                 total = r.total if r.total is not None else len(r.rows)
                 filters[col] = {"value": val, "total": total, "works": bool(total) and total < window_total}
             except DataHubError as e:
@@ -265,6 +299,24 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
     return "\n".join(lines)
 
 
+def run_deep_checks(client: DataHubClient, results: list[ApiCheckResult], specs: list[DatasetSpec], log=None, pause: float = 0.2) -> bool:
+    """성공한 API 마다 정밀 점검. Ctrl+C 를 누르면 거기서 멈추고 True(중단됨)를 돌려준다."""
+    say = log or (lambda _m: None)
+    by_id = {sp.id: sp for sp in specs}
+    try:
+        for r in results:
+            if r.status not in ("ok", "empty"):
+                continue
+            say(f"정밀 점검 중: No.{r.catalog_no} {r.name} …")
+            r.deep = deep_check(client, by_id[r.id], r.params, log=lambda m: say("  " + m), pause=pause)
+            if r.status == "empty":
+                r.hint = ""  # 정밀 점검이 최근 날짜를 이미 찾았으므로 --deep 안내는 필요 없다
+    except KeyboardInterrupt:
+        say("⚠️ 정밀 점검을 중단했습니다. 지금까지의 결과만 보여 줍니다.")
+        return True
+    return False
+
+
 def _todo_lines(results: list[ApiCheckResult]) -> list[str]:
     def names(rs: list[ApiCheckResult]) -> str:
         return ", ".join(f"No.{r.catalog_no} {r.name}" for r in rs)
@@ -285,8 +337,8 @@ def _todo_lines(results: list[ApiCheckResult]) -> list[str]:
     return out
 
 
-def save_results(results: list[ApiCheckResult], out_dir: Path) -> Path:
+def save_results(results: list[ApiCheckResult], out_dir: Path, path: Path | None = None) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"api_check_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    path = path or out_dir / f"api_check_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     path.write_text(json.dumps([asdict(r) for r in results], ensure_ascii=False, indent=1), encoding="utf-8")
     return path
