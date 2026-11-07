@@ -266,6 +266,8 @@ def cmd_data_check_api(args: argparse.Namespace) -> int:
             if r.status in ("ok", "empty"):
                 _print(f"정밀 점검 중: {r.name} …")
                 r.deep = deep_check(client, spec_by_id[r.id], r.params)
+                if r.status == "empty":
+                    r.hint = ""  # 정밀 점검이 최근 날짜를 이미 찾았으므로 --deep 안내는 필요 없다
     path = save_results(results, OUTPUT_DIR / "checks")
     _print(format_report(results, saved_path=path))
     return 0 if all(r.status != "error" for r in results) else 1

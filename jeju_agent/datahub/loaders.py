@@ -245,6 +245,28 @@ def _coverage_notes(df: pd.DataFrame, spec: DatasetSpec, params: dict) -> list[s
     return notes
 
 
+# Open API 를 쓸 수 없는 이유 → 모델과 사용자에게 보여 줄 짧은 이름과 안내
+API_UNAVAILABLE_LABELS = {
+    "no_api_id": "API 고유 ID 미등록",
+    "no_key": "프로젝트 키 없음",
+    "file_only": "허브에서 파일로만 제공",
+}
+API_UNAVAILABLE_NOTES = {
+    "no_api_id": (
+        "Open API 는 쓰지 않았습니다: 이 데이터는 API 고유 ID 미등록입니다. source='api' 로 다시 불러도 결과가 같습니다. "
+        "실제 값이 필요하면 사용자에게 제주데이터허브에서 원본 파일을 내려받아 data/raw 에 넣거나, "
+        "데이터 상세 페이지의 API 요청 주소를 알려 달라고 안내하세요."
+    ),
+    "no_key": (
+        "Open API 는 쓰지 않았습니다: 프로젝트 키 없음(.env 의 JEJUDATAHUB_PROJECT_KEY). source='api' 로 다시 불러도 결과가 같습니다. "
+        "실제 값이 필요하면 사용자에게 프로젝트 키 설정이나 원본 파일(data/raw)을 안내하세요."
+    ),
+    "file_only": (
+        "이 데이터는 허브에서 파일로만 제공됩니다. 실제 값이 필요하면 사용자에게 원본 파일을 내려받아 data/raw 에 넣어 달라고 안내하세요."
+    ),
+}
+
+
 class DataStore:
     def __init__(
         self,
@@ -282,11 +304,21 @@ class DataStore:
 
     def sources(self, spec: DatasetSpec) -> dict:
         return {
-            "api": bool(spec.api_id) and self.client.configured and spec.access in ("api", "api,file"),
+            "api": self.api_unavailable_reason(spec) is None,
             "api_id_set": bool(spec.api_id),
             "files": [str(p) for p in self.find_files(spec)],
             "sample": str(self.sample_path(spec)) if self.sample_path(spec) else None,
         }
+
+    def api_unavailable_reason(self, spec: DatasetSpec) -> str | None:
+        """Open API 를 쓸 수 없는 이유. 쓸 수 있으면 None."""
+        if spec.access not in ("api", "api,file"):
+            return "file_only"
+        if not spec.api_id:
+            return "no_api_id"
+        if not self.client.configured:
+            return "no_key"
+        return None
 
     def preferred_source(self, spec: DatasetSpec) -> str | None:
         src = self.sources(spec)
@@ -310,6 +342,7 @@ class DataStore:
                     "access": spec.access,
                     "api_ready": src["api"],
                     "api_id_set": src["api_id_set"],
+                    "api_unavailable": self.api_unavailable_reason(spec),
                     "files": len(src["files"]),
                     "sample": bool(src["sample"]),
                     "preferred": self.preferred_source(spec),
@@ -339,12 +372,13 @@ class DataStore:
         errors: list[str] = []
         retry_worth = False  # 질의 변수만 고치면 되는 오류였는지
         last_kind = "other"
+        skipped_api: str | None = None  # 자동 모드에서 Open API 를 건너뛴 이유
         for source in order:
-            # 자동 모드에서는 준비되지 않은 출처(키·api_id 없음, 파일 없음)를 조용히 건너뛴다.
-            if prefer == "auto" and source == "api" and not (
-                spec.api_id and self.client.configured and spec.access in ("api", "api,file")
-            ):
-                continue
+            # 자동 모드에서는 준비되지 않은 출처(키·api_id 없음, 파일 없음)를 건너뛰고, 이유는 결과에 남긴다.
+            if prefer == "auto" and source == "api":
+                skipped_api = self.api_unavailable_reason(spec)
+                if skipped_api:
+                    continue
             if prefer == "auto" and source == "file" and not self.find_files(spec):
                 continue
             try:
@@ -367,6 +401,8 @@ class DataStore:
                     else "방화벽·네트워크·인증 문제라 다시 시도해도 같은 결과입니다. 대체된 데이터로 진행하고 답변에 그 사실을 밝히세요."
                 )
                 ds.notes.insert(0, "⚠️ 앞선 출처를 쓰지 못해 대체했습니다 → " + " | ".join(errors) + f" ({advice})")
+            if skipped_api and ds.is_synthetic:
+                ds.notes.insert(0, API_UNAVAILABLE_NOTES[skipped_api])
             return ds
         raise DataHubError(
             f"'{spec.name}' 을(를) 불러올 수 없습니다. " + (" | ".join(errors) or "사용 가능한 출처가 없습니다."),
@@ -374,8 +410,13 @@ class DataStore:
         )
 
     def _load_api(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
-        if spec.access not in ("api", "api,file"):
-            raise DataHubError("Open API 로 제공되지 않는 데이터입니다.")
+        reason = self.api_unavailable_reason(spec)
+        if reason:
+            raise DataHubError(
+                f"Open API 를 쓸 수 없습니다({API_UNAVAILABLE_LABELS[reason]}). 다시 시도해도 결과가 같으니 "
+                "source='auto' 로 다른 출처를 쓰고, 실제 값이 필요하면 사용자에게 원본 파일(data/raw)을 안내하세요.",
+                kind="config",
+            )
         today = self.today()
         merged = render_params({**(spec.api_params or {}), **(params or {})}, today=today)
         client = self.client.for_paging(spec.api_paging)

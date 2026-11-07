@@ -151,8 +151,9 @@ API 키 없이 실행됩니다(스크립트 백엔드로 전체 흐름 검증). 
 | `ANTHROPIC_API_KEY: ✖ 예시값이 그대로 있습니다` | `.env` 의 키 자리에 예시 문구가 남아 있음. 실제 키로 교체 |
 | `Web firewall security policies have been blocked` | 허브 방화벽이 요청을 차단. 클라우드 서버가 아닌 센터·개인 PC 에서 실행 |
 | `setup.bat` 이 Python 을 못 찾음 | Microsoft Store 바로가기만 있는 경우. python.org 에서 설치하고 "Add python.exe to PATH" 체크 |
-| `api_id 가 레지스트리에 비어 있습니다` | 허브 데이터 상세 > API 탭의 고유 ID 를 `registry.yaml` 에 입력 |
-| `인증 실패(401/403)` | 프로젝트에서 해당 API 활용 신청이 승인되었는지 확인 |
+| `API 고유 ID 미등록` · `api_id 가 레지스트리에 비어 있습니다` | 허브 데이터 상세 페이지의 요청 주소(`…/api/proxy/고유ID/…`)에서 고유 ID 를 `registry.yaml` 에 입력. 그 전까지는 샘플이나 `data/raw` 파일로 동작 |
+| `인증 실패(401/403)` | 같은 키로 다른 API 는 되는데 일부만 403 이면, 그 API 를 허브 프로젝트에 아직 담지 않은 것. 허브에서 같은 프로젝트에 추가한 뒤 `data check-api` 를 다시 실행(보고서 끝의 '할 일'에 추가할 API 목록이 나옴). 모든 API 가 403 이면 `.env` 의 프로젝트 키 확인 |
+| `check-api` 에서 성공인데 0건 | 날짜 변수가 있는 데이터는 허브 공개가 늦어 최근 기간이 비어 있을 수 있음. `--deep` 으로 가장 최근 날짜 확인. 질문할 때는 에이전트가 자동으로 최근 날짜를 찾음 |
 | `제한 시간 90초를 넘겨` | 코드 실행 초과. 모델이 집계 범위를 줄여 재시도함. `JEJU_AGENT_SANDBOX_TIMEOUT` 로 조정 |
 | 차트 한글이 □ 로 보임 (PNG) | matplotlib 글꼴 문제. plotly 차트(기본)는 영향 없음. Windows 는 `Malgun Gothic` 자동 사용 |
 | 포트 8501 사용 중 | `streamlit run app.py --server.port 8600` |
