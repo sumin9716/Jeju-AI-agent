@@ -1,5 +1,7 @@
 # 🍊 제주 데이터 길잡이 (Jeju Data Navigator)
 
+[![CI](https://github.com/sumin9716/Jeju-AI-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/sumin9716/Jeju-AI-agent/actions/workflows/ci.yml)
+
 > **「제주 AI·빅데이터 활용 AI Agent 개발 챌린지」 출품작** — 제주데이터허브 공개 데이터를 **자연어 질문 한 번**으로 탐색 → 수집 → 전처리 → 분석 → 시각화 → 보고서까지 자동 수행하는 AI Agent. IT 비전문가인 도민이 제주빅데이터센터 PC에서 바로 실행해 쓸 수 있도록 설계했습니다.
 
 ```

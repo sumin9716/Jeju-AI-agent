@@ -11,3 +11,4 @@ streamlit>=1.40
 plotly>=5.24
 matplotlib>=3.9
 tabulate>=0.9
+Markdown>=3.5
