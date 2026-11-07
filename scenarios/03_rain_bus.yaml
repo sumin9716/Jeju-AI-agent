@@ -1,0 +1,9 @@
+id: rain_bus
+title: 비 오는 날 버스 이용 변화 (교통 × 기상 결합)
+datasets: [bus_stop_daily_users, daily_weather, bus_stops]
+questions:
+  - "비 오는 날에는 버스 이용객이 얼마나 줄어? 제주 관측소 강수량 기준으로 정류소별로 알려줘"
+  - "가장 영향을 많이 받는 정류소 10곳을 지도에 표시해줘"
+expect:
+  - 강수 구간별 승차인원 평균 비교
+  - 정류소 기본정보와 결합한 지도 차트

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Secrets / local config
+.env
+.streamlit/secrets.toml
+
+# Data that users download themselves and API cache
+data/raw/*
+!data/raw/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+
+# Generated outputs
+outputs/reports/*
+!outputs/reports/.gitkeep
+outputs/charts/*
+!outputs/charts/.gitkeep
+outputs/traces/*
+!outputs/traces/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
