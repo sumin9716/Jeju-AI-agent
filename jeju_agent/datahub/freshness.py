@@ -68,9 +68,12 @@ def find_latest_day(
     spec: DatasetSpec,
     base_params: dict | None = None,
     today: date | None = None,
-    max_back_days: int = 400,
+    max_back_days: int = 4400,
 ) -> tuple[date | None, int]:
-    """하루만 받는 API 의 (가장 최근 데이터 날짜, 요청 횟수). 데이터는 그 날짜까지 빠짐없이 있다고 본다."""
+    """하루만 받는 API 의 (가장 최근 데이터 날짜, 요청 횟수). 데이터는 그 날짜까지 빠짐없이 있다고 본다.
+
+    약 12년 전까지 확인한다(최대 약 55회). 갱신이 오래전에 멈춘 데이터도 마지막 날짜를 찾는다.
+    """
     if not spec.day_param or not spec.api_id:
         return None, 0
     today = today or date.today()
@@ -84,8 +87,7 @@ def find_latest_day(
         if _has_day(client, spec, base, d):
             return d, requests
         newest_empty = d
-    k = 14
-    while k <= max_back_days:  # 그 뒤로는 7일 간격
+    for k in _back_steps(max_back_days):  # 그 뒤로는 7일 → 30일 → 1년 간격으로 넓혀 가며
         d = today - timedelta(days=k)
         requests += 1
         if _has_day(client, spec, base, d):
@@ -99,8 +101,23 @@ def find_latest_day(
                     hi = mid - timedelta(days=1)
             return lo, requests
         newest_empty = d
-        k += 7
     return None, requests
+
+
+def _back_steps(max_back_days: int):
+    """며칠 전을 확인할지: 14~56일은 7일 간격, 2년까지는 30일 간격, 그 뒤는 1년 간격."""
+    k = 14
+    while k <= min(56, max_back_days):
+        yield k
+        k += 7
+    k = 86
+    while k <= min(730, max_back_days):
+        yield k
+        k += 30
+    k = 1095
+    while k <= max_back_days:
+        yield k
+        k += 365
 
 
 def find_latest_date(
@@ -109,9 +126,14 @@ def find_latest_date(
     base_params: dict | None = None,
     today: date | None = None,
     window_days: int = 31,
-    max_windows: int = 36,
+    max_windows: int = 12,
+    far_windows: int = 15,
 ) -> tuple[date | None, int]:
-    """(가장 최근 데이터 날짜, 요청 횟수). 최근 max_windows×window_days 일 안에 없으면 날짜는 None."""
+    """(가장 최근 데이터 날짜, 요청 횟수).
+
+    최근 1년은 31일 구간(max_windows 개)으로, 그 앞 15년은 1년 구간(far_windows 개)으로 거슬러 올라가며 찾고,
+    찾은 구간 안에서 이분 탐색한다. 갱신이 2018년에 끝난 카드 데이터처럼 오래된 자료도 마지막 날짜를 찾는다.
+    """
     if spec.day_param:
         return find_latest_day(client, spec, base_params, today=today)
     if len(spec.date_params) < 2 or not spec.api_id:
@@ -120,8 +142,9 @@ def find_latest_date(
     base = {k: v for k, v in (base_params or {}).items() if k not in spec.date_params[:2]}
     requests = 0
     end = today
-    for _ in range(max_windows):
-        start = end - timedelta(days=window_days - 1)
+    sizes = [window_days] * max_windows + [365] * far_windows
+    for size in sizes:
+        start = end - timedelta(days=size - 1)
         requests += 1
         if _has_data(client, spec, base, start, end):
             lo, hi = start, end  # 답은 [lo, hi] 안에 있고 [lo, end] 에는 데이터가 있다

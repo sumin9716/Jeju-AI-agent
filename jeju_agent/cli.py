@@ -228,7 +228,7 @@ def cmd_data_test_api(args: argparse.Namespace) -> int:
 def cmd_data_check_api(args: argparse.Namespace) -> int:
     from .config import OUTPUT_DIR
     from .datahub import DataHubClient, DataStore
-    from .datahub.apicheck import check_apis, format_report, save_results
+    from .datahub.apicheck import check_apis, format_report, run_deep_checks, save_results
 
     store = DataStore()
     if not store.client.configured:
@@ -241,6 +241,7 @@ def cmd_data_check_api(args: argparse.Namespace) -> int:
         page_size=rows,
         max_pages=1,
         sleep_between_pages=0,
+        timeout=20,
     )
     if args.dataset:
         specs = []
@@ -257,19 +258,22 @@ def cmd_data_check_api(args: argparse.Namespace) -> int:
         k, _, v = kv.partition("=")
         if k:
             extra[k] = v
-    results = check_apis(client, specs, extra_params=extra, rows=rows)
+    _print(f"기본 점검: 데이터 {len(specs)}종 (첫 페이지만 호출)")
+    try:
+        results = check_apis(client, specs, extra_params=extra, rows=rows, log=lambda m: _print("  " + m))
+    except KeyboardInterrupt:
+        _print("중단했습니다.")
+        return 130
+    path = save_results(results, OUTPUT_DIR / "checks")  # 정밀 점검 전에 기본 결과부터 저장
+    interrupted = False
     if args.deep:
-        from .datahub.apicheck import deep_check
-
-        spec_by_id = {sp.id: sp for sp in specs}
-        for r in results:
-            if r.status in ("ok", "empty"):
-                _print(f"정밀 점검 중: {r.name} …")
-                r.deep = deep_check(client, spec_by_id[r.id], r.params)
-                if r.status == "empty":
-                    r.hint = ""  # 정밀 점검이 최근 날짜를 이미 찾았으므로 --deep 안내는 필요 없다
-    path = save_results(results, OUTPUT_DIR / "checks")
+        _print("")
+        interrupted = run_deep_checks(client, results, specs, log=_print)
+        save_results(results, OUTPUT_DIR / "checks", path=path)
+    _print("")
     _print(format_report(results, saved_path=path))
+    if interrupted:
+        return 130
     return 0 if all(r.status != "error" for r in results) else 1
 
 

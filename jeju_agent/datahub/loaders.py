@@ -435,7 +435,7 @@ class DataStore:
                         f"기본 기간에 데이터가 없어 가장 최근 2주({start.isoformat()} ~ {latest.isoformat()})로 다시 불러왔습니다."
                     )
             else:
-                pre_notes.append("최근 3년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
+                pre_notes.append("최근 16년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
         df = normalize_dataframe(res.df, spec)
         shown = merged
         notes = pre_notes + [f"API 호출 {res.pages}페이지, 수집 {len(df):,}건 / 전체 {res.total if res.total is not None else '알 수 없음'}건"]
@@ -521,12 +521,14 @@ class DataStore:
             if latest is not None:
                 notes.append(f"이 데이터의 가장 최근 날짜는 {latest.isoformat()} 입니다 (오늘보다 {(today - latest).days}일 전).")
                 if not user_gave_dates:
-                    start, end = latest - timedelta(days=13), latest
+                    span = 1 if spec.snapshot else 14
+                    start, end = latest - timedelta(days=span - 1), latest
                     raw, p2, c2, t2 = fetch_range(start, end)
                     pages, cached, truncated = pages + p2, cached + c2, truncated or t2
-                    notes.append(f"기본 기간에 데이터가 없어 가장 최근 2주({start.isoformat()} ~ {end.isoformat()})로 다시 불러왔습니다.")
+                    what = f"가장 최근 하루({end.isoformat()})" if spec.snapshot else f"가장 최근 2주({start.isoformat()} ~ {end.isoformat()})"
+                    notes.append(f"기본 기간에 데이터가 없어 {what}로 다시 불러왔습니다.")
             else:
-                notes.append("최근 1년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
+                notes.append("약 12년 안에서 이 데이터를 찾지 못했습니다. 날짜 변수나 기간을 확인해 보세요.")
         df = normalize_dataframe(raw, spec)
         days = (end - start).days + 1
         notes.append(
