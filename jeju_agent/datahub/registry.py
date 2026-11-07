@@ -29,6 +29,8 @@ class DatasetSpec:
     api_id: str = ""
     api_params: dict = field(default_factory=dict)
     date_params: list[str] = field(default_factory=list)  # 기간 질의 변수 이름 [시작, 끝]
+    date_format: str = "%Y%m%d"  # 기간 변수 값 형식 (월 단위 데이터는 %Y%m)
+    day_param: str = ""  # 하루만 받는 날짜 변수(예 searchDate). 있으면 기간을 하루씩 나눠 부른다
     api_paging: dict = field(default_factory=dict)  # 페이지 변수 재정의 {page, size, page_size, max_pages}
     filter_params: dict = field(default_factory=dict)  # 거르기 질의 변수 {변수: 설명}
     file_glob: str = ""
@@ -111,6 +113,8 @@ def load_registry(path: Path | str = REGISTRY_FILE) -> Registry:
         item["columns"] = cols
         item["api_params"] = item.get("api_params") or {}
         item["date_params"] = list(item.get("date_params") or [])
+        item["date_format"] = str(item.get("date_format") or "%Y%m%d")
+        item["day_param"] = str(item.get("day_param") or "")
         item["api_paging"] = item.get("api_paging") or {}
         item["filter_params"] = item.get("filter_params") or {}
         item["rename"] = item.get("rename") or {}

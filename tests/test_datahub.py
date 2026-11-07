@@ -84,7 +84,7 @@ def test_normalize_renames_and_types():
 
 
 def test_store_loads_samples_and_status():
-    store = DataStore()
+    store = DataStore(client=DataHubClient(project_key=""))  # .env 의 키와 무관하게 네트워크 없이
     status = {s["id"]: s for s in store.status()}
     assert status["floating_population_emd"]["sample"] is True
     ds = store.load("유동인구")

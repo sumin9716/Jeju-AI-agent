@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from .client import DataHubClient, DataHubError, PageSizeTooLarge, render_params
-from .freshness import find_latest_date
+from .freshness import find_latest_date, fmt_date, to_api_params
 from .registry import DatasetSpec
 
 
@@ -46,7 +46,7 @@ def check_apis(
         if not spec.api_id:
             results.append(res)
             continue
-        params = render_params({**(spec.api_params or {}), **(extra_params or {})})
+        params = to_api_params(spec, render_params({**(spec.api_params or {}), **(extra_params or {})}))
         res.params = params
         try:
             first = client.for_paging(spec.api_paging).fetch_page(spec.api_id, params, page=1, size=rows)
@@ -101,10 +101,6 @@ def add_hints(results: list[ApiCheckResult]) -> None:
             r.hint = "질의 변수가 맞지 않습니다. 허브 메시지를 보고 --param 이름=값 으로 바꿔 다시 점검하세요."
 
 
-def _ymd(d: date) -> str:
-    return d.strftime("%Y%m%d")
-
-
 def _looks_numeric(v) -> bool:
     try:
         float(str(v).replace(",", ""))
@@ -129,19 +125,23 @@ def deep_check(
     out: dict = {"errors": []}
     window = dict(params)
 
-    # 1) 가장 최근 데이터 날짜 → 점검 기간을 그 날짜 기준 최근 7일로
-    if len(spec.date_params) >= 2:
-        s_key, e_key = spec.date_params[:2]
+    # 1) 가장 최근 데이터 날짜 → 점검 기간을 그 날짜 기준 최근 7일로 (하루만 받는 API 는 그날 하루)
+    window_keys = [spec.day_param] if spec.day_param else spec.date_params[:2]
+    if spec.day_param or len(spec.date_params) >= 2:
         try:
             latest, n = find_latest_date(c, spec, params, today=today)
             out["latest_date"] = latest.isoformat() if latest else None
             out["probe_requests"] = n
             if latest:
                 out["lag_days"] = (today - latest).days
-                window = {**params, s_key: _ymd(latest - timedelta(days=6)), e_key: _ymd(latest)}
+                if spec.day_param:
+                    window = {**params, spec.day_param: fmt_date(latest, spec)}
+                else:
+                    s_key, e_key = spec.date_params[:2]
+                    window = {**params, s_key: fmt_date(latest - timedelta(days=6), spec), e_key: fmt_date(latest, spec)}
         except DataHubError as e:
             out["errors"].append(f"최신 날짜 확인: {e}")
-    out["window"] = {k: window.get(k) for k in spec.date_params[:2]} if spec.date_params else {}
+    out["window"] = {k: window.get(k) for k in window_keys} if window_keys else {}
 
     # 2) 페이지 넘김과 응답 메타
     first_row: dict = {}
@@ -182,7 +182,7 @@ def deep_check(
     filters: dict = {}
     if first_row and window_total:
         for col, val in first_row.items():
-            if val is None or _looks_numeric(val) or col in spec.date_params:
+            if val is None or _looks_numeric(val) or col in spec.date_params or col == spec.day_param:
                 continue
             try:
                 r = c.fetch_page(spec.api_id, {**window, col: val}, page=1, size=1)

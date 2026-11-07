@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import glob
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -217,13 +218,9 @@ def normalize_dataframe(df: pd.DataFrame, spec: DatasetSpec) -> pd.DataFrame:
 
 
 def _parse_ymd(value) -> date | None:
-    text = re.sub(r"[^0-9]", "", str(value or ""))
-    if len(text) != 8:
-        return None
-    try:
-        return datetime.strptime(text, "%Y%m%d").date()
-    except ValueError:
-        return None
+    from .freshness import parse_date_text
+
+    return parse_date_text(value)
 
 
 def _coverage_notes(df: pd.DataFrame, spec: DatasetSpec, params: dict) -> list[str]:
@@ -417,6 +414,8 @@ class DataStore:
                 "source='auto' 로 다른 출처를 쓰고, 실제 값이 필요하면 사용자에게 원본 파일(data/raw)을 안내하세요.",
                 kind="config",
             )
+        if spec.day_param:
+            return self._load_api_by_day(spec, params, refresh, max_rows)
         today = self.today()
         merged = render_params({**(spec.api_params or {}), **(params or {})}, today=today)
         client = self.client.for_paging(spec.api_paging)
@@ -464,11 +463,102 @@ class DataStore:
             notes=notes,
         )
 
+    def _load_api_by_day(self, spec: DatasetSpec, params: dict | None, refresh: bool, max_rows: int | None) -> LoadedDataset:
+        """하루만 받는 API(예: searchDate): 요청 기간을 하루씩 나눠 부르고 합친다."""
+        from .freshness import fmt_date
+
+        today = self.today()
+        merged = render_params({**(spec.api_params or {}), **(params or {})}, today=today)
+        s_key, e_key = (spec.date_params + ["startDate", "endDate"])[:2] if len(spec.date_params) >= 2 else ("startDate", "endDate")
+        given = params or {}
+        user_gave_dates = any(k in given for k in (s_key, e_key, spec.day_param))
+        if spec.day_param in given and not (s_key in given or e_key in given):
+            start = end = _parse_ymd(given[spec.day_param])
+        else:
+            start, end = _parse_ymd(merged.get(s_key)), _parse_ymd(merged.get(e_key))
+            start, end = start or end, end or start
+        if not start or not end:
+            raise DataHubError(
+                f"기간을 {s_key}·{e_key}=YYYYMMDD 로 주세요(하루만 보려면 {spec.day_param}=YYYYMMDD).", kind="params"
+            )
+        if start > end:
+            start, end = end, start
+        base = {k: v for k, v in merged.items() if k not in (s_key, e_key, spec.day_param)}
+        client = self.client.for_paging(spec.api_paging)
+        cap = int((spec.api_paging or {}).get("max_days", 400))
+        notes: list[str] = []
+        if (end - start).days + 1 > cap:
+            asked = (end - start).days + 1
+            start = end - timedelta(days=cap - 1)
+            notes.append(
+                f"⚠️ 요청 기간이 {asked}일이라 하루 1회 호출 한도({cap}일)에 맞춰 끝 날짜 기준 최근 {cap}일"
+                f"({start.isoformat()} ~ {end.isoformat()})만 불러왔습니다. 더 필요하면 기간을 나눠 요청하세요."
+            )
+
+        def fetch_range(a: date, b: date) -> tuple[pd.DataFrame, int, int, bool]:
+            frames, pages, cached, truncated = [], 0, 0, False
+            d = a
+            while d <= b:
+                res = client.fetch(spec.api_id, {**base, spec.day_param: fmt_date(d, spec)}, refresh=refresh)
+                pages += res.pages
+                cached += int(res.from_cache)
+                truncated = truncated or res.truncated
+                if not res.df.empty:
+                    frames.append(res.df)
+                if max_rows and sum(len(f) for f in frames) >= max_rows:
+                    break
+                if not res.from_cache and client.sleep_between_pages:
+                    time.sleep(client.sleep_between_pages)
+                d += timedelta(days=1)
+            df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+            if max_rows:
+                df = df.head(max_rows)
+            return df, pages, cached, truncated
+
+        raw, pages, cached, truncated = fetch_range(start, end)
+        if raw.empty:
+            latest = self.latest_date(spec, base, client=client)
+            if latest is not None:
+                notes.append(f"이 데이터의 가장 최근 날짜는 {latest.isoformat()} 입니다 (오늘보다 {(today - latest).days}일 전).")
+                if not user_gave_dates:
+                    start, end = latest - timedelta(days=13), latest
+                    raw, p2, c2, t2 = fetch_range(start, end)
+                    pages, cached, truncated = pages + p2, cached + c2, truncated or t2
+                    notes.append(f"기본 기간에 데이터가 없어 가장 최근 2주({start.isoformat()} ~ {end.isoformat()})로 다시 불러왔습니다.")
+            else:
+                notes.append("최근 1년 안에서 이 데이터를 찾지 못했습니다. 기간을 직접 지정해 보세요.")
+        df = normalize_dataframe(raw, spec)
+        days = (end - start).days + 1
+        notes.append(
+            f"하루씩 {days}일을 나눠 불러왔습니다({spec.day_param}): API 호출 {pages}페이지(캐시 {cached}일), 수집 {len(df):,}건"
+        )
+        shown = {**base, s_key: start.strftime("%Y%m%d"), e_key: end.strftime("%Y%m%d")}
+        notes.append(f"질의 변수: {shown}")
+        if df.empty:
+            notes.append("⚠️ 이 조건에 해당하는 데이터가 0건입니다. 기간을 앞당기거나 넓혀 다시 요청하세요.")
+        else:
+            notes.extend(_coverage_notes(df, spec, shown))
+        if truncated:
+            notes.append("⚠️ 일부 날짜는 페이지 한도로 다 받지 못했습니다. 거르기 변수로 범위를 줄이세요.")
+        url = f"{self.client.base_url}/{spec.api_id}/{{PROJECT_KEY}}?{spec.day_param}=<{start.strftime('%Y%m%d')}~{end.strftime('%Y%m%d')} 하루씩>"
+        return LoadedDataset(
+            id=spec.id,
+            name=spec.name,
+            df=df,
+            provenance="api",
+            source=url,
+            fetched_at=datetime.now().isoformat(timespec="seconds"),
+            is_synthetic=False,
+            spec=spec,
+            notes=notes,
+        )
+
     def latest_date(self, spec: DatasetSpec, params: dict | None = None, client: DataHubClient | None = None) -> date | None:
         """기간 변수가 있는 API 데이터의 가장 최근 날짜 (한 번 찾으면 이 실행 동안 기억)."""
         from .freshness import find_latest_date
 
-        base = {k: v for k, v in (params or {}).items() if k not in spec.date_params[:2]}
+        skip = {*spec.date_params[:2], spec.day_param}
+        base = {k: v for k, v in (params or {}).items() if k not in skip}
         key = spec.id + "|" + repr(sorted(base.items()))
         if key not in self._latest_cache:
             try:

@@ -2,33 +2,49 @@
 
 ## 1. 필수 데이터 (제주데이터허브)
 
-챌린지 제공 「제주데이터허브 데이터 목록_20261105.xlsx」 기준. 모든 데이터는 https://www.jejudatahub.net 에서 검색해 상세 페이지의 이용조건을 확인한 뒤 사용합니다. 본 서비스는 **데이터 목록 전체(1,259종)를 탐색 대상**으로 삼고, 아래 17종을 바로 불러올 수 있도록 레지스트리에 등록했습니다. 대표 분석 주제(읍면동 생활권 진단)의 **필수 데이터는 No.753 「읍면동 단위 내국인 유동인구」** 입니다.
+챌린지 제공 「제주데이터허브 데이터 목록_20261105.xlsx」 기준. 모든 데이터는 https://www.jejudatahub.net 에서 검색해 상세 페이지의 이용조건을 확인한 뒤 사용합니다. 본 서비스는 **데이터 목록 전체(1,259종)를 탐색 대상**으로 삼고, 아래 19종을 바로 불러올 수 있도록 레지스트리에 등록했습니다(그중 12종은 Open API ID 확보). 대표 분석 주제(읍면동 생활권 진단)의 **필수 데이터는 No.753 「읍면동 단위 내국인 유동인구」** 입니다.
 
-| 구분 | No. | 데이터명 | 카테고리 | 제공 | 수집 기간 | 활용 항목 | 레지스트리 id |
-|---|---|---|---|---|---|---|---|
-| **필수** | 753 | 읍면동 단위 내국인 유동인구 | 인구, 생활 | API | 2017-01-01 ~ (일 갱신) | 날짜, 시군구, 읍면동, 성별, 연령대, 거주인구, 근무인구, 방문자수 | `floating_population_emd` |
-| 보조 | 725 | 일일 정류소별 버스 이용자 정보 | 교통, 안전 | API | 2015-01-01 ~ (일 갱신) | 날짜, 정류소ID, 정류소명, 승차·하차 인원 | `bus_stop_daily_users` |
-| 보조 | 726 | 버스 정류소 기본 정보 | 교통, 안전 | API | 2019-04-01 ~ (일 갱신) | 정류소ID, 정류소명, 위도, 경도 | `bus_stops` |
-| 보조 | 756 | 일별 기상 정보 | 환경, 재난 | API | 2014-01-01 ~ (일 갱신) | 날짜, 관측소명, 기온, 강수량, 풍속 | `daily_weather` |
-| 보조 | 741 | 내국인 관광객 지역, 업종, 성별, 연령대별 카드 이용 데이터 | 소비, 경제 | API | 2016-09 ~ 2018-12 | 연월, 읍면동, 업종, 성별, 연령대, 이용건수, 이용금액 | `card_domestic_tourist` |
-| 보조 | 571 | 제주특별자치도 음식점 목록(통합) | 소비, 경제 | File | 1960 ~ 2025-08 | 사업장명, 업태, 읍면동, 인허가일자, 영업상태, 폐업일자 | `restaurants` |
-| 보조 | 755 | 방문목적별 입도객 현황 | 인구, 생활 | API | 2018-01 ~ 2025-07 | 연월, 내·외국인, 방문목적, 입도객수 | `visitors_by_purpose` |
-| 보조 | 746 | 관광지별 내국인 유입자 수 | 관광, 여행 | API | 2009 ~ 2024 | 연월, 관광지명, 유입자수 | `tourist_spots_domestic` |
-| 보조 | 5 | 농산물 품종별 일일 거래 통계 | 농축수산 | API | 2016-01-04 ~ (일 갱신) | 날짜, 품목, 품종, 등급, 평균가격, 거래량 | `agri_price_daily` |
-| 보조 | 720 | 제주 공공와이파이 AP 정보 | 관광, 여행 | API | 2020-09-09 ~ (일 갱신) | AP명, 설치장소, 읍면동, 위도, 경도 | `public_wifi_ap` |
-| 보조 | 494 | 전기자동차 충전소 정보 | 인구, 생활 | API | 2025-09-18 기준 | 충전소명, 읍면동, 충전기유형, 충전기수, 위도, 경도 | `ev_charging_stations` |
-| 보조 | 518 | 관광 숙박업 정보 | 관광, 여행 | API | 2025-09-18 기준 | 업소명, 업종, 객실수, 영업상태, 도로명·지번 주소, 인허가일자 | `tourist_accommodations` |
-| 보조 | 544 | 오름 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도 | `oreum_locations` |
-| 보조 | 543 | 박물관 및 미술관 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도, 전화번호 | `museum_locations` |
-| 보조 | 551 | 기념품 가게 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도, 전화번호 | `souvenir_shops` |
-| 보조 | 747 | 읍면동 단위 외국인 장기체류 유동인구 | 인구, 생활 | API | 2017-11-01 ~ (일 갱신) | 날짜, 국가, 시군구, 읍면동, 거주·근무·방문 인구 | `floating_population_foreign_long` |
-| 보조 | 748 | 읍면동 단위 외국인 단기체류 유동인구 | 인구, 생활 | API | 2018-01-01 ~ (일 갱신) | 날짜, 국가, 시군구, 읍면동, 방문자수 | `floating_population_foreign_short` |
+| 구분 | No. | 데이터명 | 카테고리 | 제공 | 수집 기간 | 활용 항목 | 레지스트리 id | Open API 연결 |
+|---|---|---|---|---|---|---|---|---|
+| **필수** | 753 | 읍면동 단위 내국인 유동인구 | 인구, 생활 | API | 2017-01-01 ~ (일 갱신) | 날짜, 시군구, 읍면동, 성별, 연령대, 거주인구, 근무인구, 방문자수 | `floating_population_emd` | ✔ 사용자 PC 실호출 검증 |
+| 보조 | 725 | 일일 정류소별 버스 이용자 정보 | 교통, 안전 | API | 2015-01-01 ~ (일 갱신) | 날짜, 정류소ID, 정류소명, 승차·하차 인원 | `bus_stop_daily_users` | ○ ID 미확보 (샘플·파일) |
+| 보조 | 724 | 일일 노선별 버스 이용자 정보 | 교통, 안전 | API | 2015-01-01 ~ (일 갱신) | 날짜, 노선명, 승하차구분, 이용자수 | `bus_route_daily_users` | △ ID 확보, 검증 전 |
+| 보조 | 726 | 버스 정류소 기본 정보 | 교통, 안전 | API | 2019-04-01 ~ (일 갱신) | 정류소ID, 정류소명, 정류소주소, 지역정보, 방향, 위도, 경도 | `bus_stops` | △ ID 확보, 검증 전 |
+| 보조 | 756 | 일별 기상 정보 | 환경, 재난 | API | 2014-01-01 ~ (일 갱신) | 날짜, 관측소명, 평균·최고·최저기온, 강수량, 평균·최대풍속 | `daily_weather` | △ ID 확보, 검증 전 (하루씩 조회) |
+| 보조 | 757 | 기상관측소 정보 | 환경, 재난 | API | 2019-04-01 ~ (일 갱신) | 관측소명, 위도, 경도 | `weather_stations` | △ ID 확보, 검증 전 |
+| 보조 | 741 | 내국인 관광객 지역, 업종, 성별, 연령대별 카드 이용 데이터 | 소비, 경제 | API | 2016-09 ~ 2018-12 | 연월, 시군구, 도심구분(동/읍면), 업종, 관광객구분, 성별, 연령대, 이용자수·건수·금액 | `card_domestic_tourist` | △ ID 확보, 검증 전 |
+| 보조 | 571 | 제주특별자치도 음식점 목록(통합) | 소비, 경제 | File | 1960 ~ 2025-08 | 사업장명, 업태, 읍면동, 인허가일자, 영업상태, 폐업일자 | `restaurants` | － 파일 제공 데이터 |
+| 보조 | 755 | 방문목적별 입도객 현황 | 인구, 생활 | API | 2018-01 ~ 2025-07 | 연월, 방문목적, 입도객수 (내·외국인 구분 없음) | `visitors_by_purpose` | △ ID 확보, 검증 전 |
+| 보조 | 746 | 관광지별 내국인 유입자 수 | 관광, 여행 | API | 2009 ~ 2024 | 연월, 관광지명, 유입자수 | `tourist_spots_domestic` | ○ ID 미확보 (샘플·파일) |
+| 보조 | 5 | 농산물 품종별 일일 거래 통계 | 농축수산 | API | 2016-01-04 ~ (일 갱신) | 날짜, 품목, 품종, 등급, 평균가격, 거래량 | `agri_price_daily` | ○ ID 미확보 (샘플·파일) |
+| 보조 | 720 | 제주 공공와이파이 AP 정보 | 관광, 여행 | API | 2020-09-09 ~ (일 갱신) | AP그룹명, 설치위치, 분류, 읍면동, 상세주소, 위도, 경도 | `public_wifi_ap` | △ ID 확보, 검증 전 |
+| 보조 | 494 | 전기자동차 충전소 정보 | 인구, 생활 | API | 2025-09-18 기준 | 충전소명, 읍면동, 충전기유형, 충전기수, 위도, 경도 | `ev_charging_stations` | ○ ID 미확보 (샘플·파일) |
+| 보조 | 518 | 관광 숙박업 정보 | 관광, 여행 | API | 2025-09-18 기준 | 업소명, 업종, 객실수, 영업상태, 도로명·지번 주소, 인허가일자 | `tourist_accommodations` | △ ID 확보, 프로젝트 추가 필요(403) |
+| 보조 | 544 | 오름 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도 | `oreum_locations` | △ ID 확보, 프로젝트 추가 필요(403) |
+| 보조 | 543 | 박물관 및 미술관 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도, 전화번호 | `museum_locations` | △ ID 확보, 프로젝트 추가 필요(403) |
+| 보조 | 551 | 기념품 가게 위치 정보 | 관광, 여행 | API | 2025-09-21 기준 | 장소명, 분류, 주소, 위도, 경도, 전화번호 | `souvenir_shops` | △ ID 확보, 프로젝트 추가 필요(403) |
+| 보조 | 747 | 읍면동 단위 외국인 장기체류 유동인구 | 인구, 생활 | API | 2017-11-01 ~ (일 갱신) | 날짜, 국가, 시군구, 읍면동, 거주·근무·방문 인구 | `floating_population_foreign_long` | ○ ID 미확보 (샘플·파일) |
+| 보조 | 748 | 읍면동 단위 외국인 단기체류 유동인구 | 인구, 생활 | API | 2018-01-01 ~ (일 갱신) | 날짜, 국가, 시군구, 읍면동, 방문자수 | `floating_population_foreign_short` | ○ ID 미확보 (샘플·파일) |
 
 **그 밖의 데이터(목록 1,259종 전체)**: 사용자가 허브 상세 페이지에서 파일을 내려받아 `data/raw/` 에 넣으면 `load_file` 도구가 스키마를 자동 추정(숫자·날짜 변환, 제목 행 건너뛰기, 엑셀 시트 선택)해 분석한다. 이때 출처는 "제주데이터허브(사용자 다운로드 파일)"로, 이용조건은 해당 데이터 상세 페이지 기준으로 보고서에 기록된다.
 
 **필수 데이터 실호출 확인 (2026-11-07, `python -m jeju_agent.cli data check-api`)**: 「읍면동 단위 내국인 유동인구」 Open API 는 기간 변수 `startDate`·`endDate` 가 필수이며(없으면 HTTP 400 "잘못된 파라미터 요청"), `20240101` 과 `2024-01-01` 형식을 모두 받습니다. 응답 컬럼은 `baseDate, city, emd, gender, ageGroup, resdPop, workPop, visitPop` 8개로 레지스트리의 한글 컬럼(날짜·시군구·읍면동·성별·연령대·거주인구·근무인구·방문자수)과 1:1 로 대응합니다. 2024-01-01~07 조회 결과 전체 4,816건(하루 688건 = 읍면동 43곳 × 성별 2 × 연령대 8 로 추정)이었습니다. 쪽당 건수(`limit`)는 최대 100건이며, 넘기면 줄여 주지 않고 HTTP 500 으로 거부합니다. '자동갱신'이지만 실제 데이터는 늦게 올라옵니다. 2026-11-07 정밀 점검(`check-api --deep`) 결과 가장 최근 데이터는 2026-08-31(약 2개월 지연)이었고, 로더는 이 날짜를 스스로 찾아 기본 기간을 맞추며 요청 기간보다 데이터가 일찍 끝나면 답변에 실제 기간을 밝히도록 안내합니다. 같은 점검에서 페이지 넘김(`number`)이 정상이고, 응답 컬럼 이름을 질의 변수로 넣으면 걸러짐을 확인했습니다(2026-08-25~31 전체 4,816건 → `emd=한림읍` 112건, `city=제주시` 2,912건, `gender=남` 2,408건, `ageGroup=10대` 602건). 읍면동 하나만 받으면 하루 16건이라 1년치도 약 60회 호출로 수집됩니다. 값은 실제 주민 수보다 훨씬 커서(예: 애월읍 30대 남성 거주인구 37,074) 시간대별 추정치의 합산일 수 있으므로, 에이전트는 절대 인원이 아닌 상대 비교·추세로 해석하도록 안내됩니다.
 
 **관광 숙박업(No.518)·오름(No.544)·박물관 및 미술관(No.543)·기념품 가게(No.551)** 의 API ID 와 질의 변수·응답 필드명(companyName·bizSmallType·openStatus·roomCount·licensingDate, placeName·category·addressDoro·latitude·longitude 등)은 제주데이터허브를 호출하는 공개 저장소 [Yanghj3119/JNUproject](https://github.com/Yanghj3119/JNUproject) 의 `server/hub.js` 에서 확인했습니다. 사용자 프로젝트에 각 API 를 담아야 호출되며, `check-api` 로 실제 응답을 확인한 뒤 레지스트리의 `schema_verified` 를 true 로 바꿉니다.
+
+**공개 코드로 찾은 API 7종 (2026-11-07)**: 제주데이터허브 Open API 를 호출하는 공개 저장소 코드에서 API ID·질의 변수·응답 필드를 확인해 레지스트리에 넣었습니다. 다른 사람의 프로젝트 키는 쓰지 않았고, API ID 와 필드 이름만 참고했습니다. 사용자 프로젝트에 각 API 를 담은 뒤 `check-api --deep` 으로 실제 응답을 확인해야 `schema_verified` 를 true 로 바꿉니다.
+
+| No. | 데이터 | 확인한 내용 | 근거 (공개 저장소) |
+|---|---|---|---|
+| 756 | 일별 기상 정보 | 질의 변수는 하루짜리 `searchDate`(YYYYMMDD)뿐 → 로더가 기간을 하루씩 나눠 부름(최대 400일). 응답 `baseDate, observatoryName, averageTemperature, highestTemperature(·Time), lowestTemperature(·Time), dailyRainfall, averageWindSpeed, maximumWindSpeed(·Time·Direction)` | athene74/new_data_science, jwywoo/colab-practice |
+| 757 | 기상관측소 정보 | 응답 `observatoryName, longitude, latitude`, `observatoryName` 으로 거르기 | jwywoo/colab-practice |
+| 724 | 일일 노선별 버스 이용자 정보 | 질의 변수 `startDate·endDate`(YYYYMMDD)·`moveType`(승차/하차), 응답 `baseDate, routeName, userCount` | prelude69/JNURISEProject, learn-programmers/KDT_DATA_Analysis_1st |
+| 726 | 버스 정류소 기본 정보 | 응답 `stationId, stationName, stationAddress, localInfo, direction, latitude, longitude`, `stationName` 으로 거르기 | JejuTravel/JejuTravel-BE |
+| 741 | 내국인 관광객 카드 이용 | 질의 변수 `startDate·endDate`(YYYYMM, 필수)·`sido, sigungu, cityGubun, marketType, userType, ageGroup, gender`. 응답 `sido, sigungu, cityGubun, marketType, userType, ageGroup, gender, dtYearMonth, userCount, useCount, useCost`. **읍면동이 아니라 시군구+도심구분(동/읍면) 단위**이고 관광객구분에 '제주도민'도 있음(공개 실행 결과에서 확인, 2018년 1년 8,019건) | ruinsage/DataScience, hyk2202/semi_project_2 |
+| 755 | 방문목적별 입도객 현황 | 질의 변수 `startDate·endDate`(YYYYMM)·`visitPurpose`. 응답 `dtYearMonth, visitorCnt, visitPurpose` — **내·외국인 구분이 없음**(공개 실행 결과에서 확인) | barabonda/SK-AI-FLY |
+| 720 | 제주 공공와이파이 AP 정보 | 응답 `apGroupName, installLocationDetail, category, categoryDetail, addressDong, addressDetail, latitude, longitude` | JejuTravel/JejuTravel-BE, hyun083/jejuPublic |
+
+기념품 가게(No.551)의 API ID 는 다른 공개 저장소(jhyun-k/JejuOleum_map)에서도 같은 값으로 쓰여 교차 확인했습니다. 합성 샘플도 이 실제 구조에 맞춰 다시 만들었습니다(값과 이름은 가짜).
 
 유동인구 항목 구성은 제주특별자치도가 공공데이터포털에 등록한 동일 명칭 API 명세(https://www.data.go.kr/data/15074268/openapi.do)와도 일치합니다. 그 밖의 데이터는 허브 목록의 데이터명·수집 기간과 공개 명세를 바탕으로 컬럼을 추정했으며, 실제 응답 필드명은 `python -m jeju_agent.cli data test-api <id>` 로 확인해 `registry.yaml` 의 `rename` 에 반영합니다(반영하지 않아도 에이전트는 원본 컬럼명으로 동작).
 
@@ -43,6 +59,7 @@
 질문 → [search_catalog] 데이터 목록 검색(동의어·유사도·인기도)
      → [load_dataset]  출처 결정: Open API(기간 변수, 쪽당 100건 페이지 수집·상한 오류 시 서버 최대값으로 재요청·중복 쪽 차단,
                         기본 기간이 비면 가장 최근 데이터 날짜 기준 최근 2주로 재요청, 디스크 캐시) → data/raw 파일(CSV/XLSX, 인코딩 자동 판별) → 합성 샘플
+                        하루만 받는 API(일별 기상 searchDate)는 기간을 하루씩 나눠 부르고(최대 400일), 월 단위 API 는 YYYYMM 으로 부름
                         대체가 일어나면 앞선 출처의 실패 사유를, 0건·일부 수집이면 경고를 결과에 붙여 모델이 기간·변수를 고쳐 다시 요청
      → [load_file]     미등록 데이터: data/raw 의 임의 파일 → 인코딩·제목 행·시트 처리 → 숫자/날짜 자동 추정
                         정규화: 컬럼명 공백 제거 → rename(영문 키→한글) → 날짜(YYYYMMDD 포함) 파싱 → 숫자(쉼표 제거) 변환
