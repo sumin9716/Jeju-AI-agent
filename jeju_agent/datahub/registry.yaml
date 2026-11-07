@@ -193,14 +193,16 @@ datasets:
     access: api
     api_id: 1aD5taat1attaa51Db1511b51ab9Da19
     api_params:
-      startDate: "{{today-14d}}"
-      endDate: "{{today-1d}}"
+      startDate: "20250317"
+      endDate: "20250330"
     date_params: [startDate, endDate]
     day_param: searchDate
     api_paging: {max_days: 400}
+    filter_params:
+      observatoryName: 관측소 이름 (예 제주, 중문)
     file_glob: "*기상*.csv;*기상*.xlsx;daily_weather*.csv"
     sample_file: daily_weather_sample.csv
-    update: "2014-01-01 ~ (일 단위 자동갱신)"
+    update: "2014-01-01 ~ 2025-03-30 (2026-11-07 확인, 이후 갱신 멈춤)"
     license: 제주데이터허브 이용약관 (출처 표시)
     schema_verified: false
     columns:
@@ -232,9 +234,9 @@ datasets:
     notes: >-
       API 는 하루짜리 searchDate(YYYYMMDD)만 받으므로 기간은 하루씩 나눠 부른다(1년이면 약 365회 호출로 수 분 걸림).
       하루에 관측소마다 1행이다. 관측소별 값이므로 정류소·읍면동과 결합할 때는 기상관측소 정보(weather_stations, No.757)의
-      좌표로 가장 가까운 관측소를 고른다. 공개 저장소 코드에서 확인한 API ID·필드명이다. 2026-11-07 사용자 PC 점검에서 호출(인증)은
-      성공했지만 searchDate 로 최근 400일 안에 자료가 없었다(날짜 변수가 바뀌었거나 갱신이 멈췄을 수 있어 확인 중). 0건이면
-      그 사실과 가장 최근 날짜를 답변에 밝히고, 같은 날짜의 실제 날씨가 없으면 날씨와 결합한 결론을 내지 않는다.
+      좌표로 가장 가까운 관측소를 고른다. 실제 자료는 2025-03-30 에서 갱신이 멈췄다(2026-11-07 사용자 PC 점검, 그날 관측소 33곳).
+      그래서 날씨와 다른 데이터를 결합할 때는 2025-03-30 이전 기간을 고르고, 그 이후 기간을 물으면 실제 날씨가 없다는 점을 먼저 밝힌다.
+      observatoryName 으로 한 관측소만 받을 수 있다. 숫자 필드 이름은 공개 코드 기준이며 다음 점검에서 응답 컬럼으로 다시 확인한다.
 
   - id: weather_stations
     catalog_no: 757
@@ -495,7 +497,7 @@ datasets:
     notes: >-
       날마다 전체 AP 목록을 다시 싣는 데이터라(누적 631만 건) 하루치(baseDate)만 받는다. 기본은 어제 하루이며, 비어 있으면 가장
       최근 하루를 찾아 받는다. 읍면동 이름은 읍면동주소의 마지막 단어다. 분류(category)로 걸러진다. 이용량은 별도 데이터
-      (와이파이 사용량, No.743~752)에 있다. 지도 시각화에 적합. 2026-11-07 사용자 PC 의 check-api --deep 으로 실제 응답을 확인했다. 날짜(baseDate)로 걸러지는지는 다음 점검에서 확인한다.
+      (와이파이 사용량, No.743~752)에 있다. 지도 시각화에 적합. 2026-11-07 사용자 PC 의 check-api --deep 으로 실제 응답을 확인했다(baseDate 로 걸러짐, 하루 약 3,100곳 = 32회 호출, 약 1일 지연).
 
   - id: ev_charging_stations
     catalog_no: 494

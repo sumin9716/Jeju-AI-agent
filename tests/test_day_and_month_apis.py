@@ -66,15 +66,29 @@ class MonthHub:
         return Resp(200, {"totCnt": len(sel), "hasMore": page * size < len(sel), "data": sel[(page - 1) * size: page * size]})
 
 
-def _store(hub, tmp_path):
+def _store(hub, tmp_path, rolling_weather: bool = True):
+    """rolling_weather: 일별 기상의 기본 기간을 '오늘-14 ~ 오늘-1' 로 바꿔 갱신이 계속되는 경우를 흉내 낸다
+    (실제 레지스트리는 갱신이 멈춘 2025-03 마지막 2주를 기본으로 쓴다)."""
+    from dataclasses import replace
+
+    from jeju_agent.datahub.registry import Registry
+
+    specs = []
+    for sp in load_registry():
+        if rolling_weather and sp.id == "daily_weather":
+            sp = replace(sp, api_params={"startDate": "{{today-14d}}", "endDate": "{{today-1d}}"})
+        specs.append(sp)
     client = DataHubClient(project_key="KEY", session=hub, cache_dir=tmp_path, page_size=100, sleep_between_pages=0)
-    return DataStore(client=client, raw_dir=tmp_path, today=lambda: TODAY)
+    return DataStore(registry=Registry(specs), client=client, raw_dir=tmp_path, today=lambda: TODAY)
 
 
 def test_registry_has_day_and_month_specs():
     reg = load_registry()
     weather = reg.get("daily_weather")
     assert weather.day_param == "searchDate" and weather.api_id and weather.date_params == ["startDate", "endDate"]
+    assert weather.api_params == {"startDate": "20250317", "endDate": "20250330"}  # 실제 자료는 2025-03-30 까지
+    wifi = reg.get("public_wifi_ap")
+    assert wifi.day_param == "baseDate" and wifi.snapshot and wifi.schema_verified
     for key in ("visitors_by_purpose", "card_domestic_tourist"):
         assert reg.get(key).date_format == "%Y%m"
     assert reg.get("weather_stations").catalog_no == 757 and reg.get("bus_route_daily_users").catalog_no == 724
@@ -108,6 +122,13 @@ def test_day_api_finds_latest_when_default_window_is_empty(tmp_path):
     assert len(ds.df) == 14 * 4 and ds.df["날짜"].max().date() == latest
     assert any("가장 최근 날짜는 2026-09-28" in n for n in ds.notes)
     assert any("가장 최근 2주(2026-09-15 ~ 2026-09-28)" in n for n in ds.notes)
+
+
+def test_weather_default_window_is_last_two_weeks_before_feed_stopped(tmp_path):
+    hub = DayHub(latest=date(2025, 3, 30))
+    ds = _store(hub, tmp_path, rolling_weather=False).load("daily_weather")
+    assert len(hub.calls) == 14 and hub.calls[0]["searchDate"] == "20250317" and hub.calls[-1]["searchDate"] == "20250330"
+    assert len(ds.df) == 14 * 4 and ds.df["날짜"].max().date() == date(2025, 3, 30)
 
 
 def test_day_api_keeps_user_dates_and_caps_long_ranges(tmp_path):
@@ -191,11 +212,18 @@ def test_check_and_deep_check_for_day_api(tmp_path):
     spec = load_registry().get("daily_weather")
     hub = DayHub(latest=TODAY - timedelta(days=3))
     client = DataHubClient(project_key="KEY", session=hub, cache_dir=tmp_path, page_size=2, max_pages=1, sleep_between_pages=0)
-    (res,) = check_apis(client, [spec], rows=2)
+    (res,) = check_apis(client, [spec], extra_params={"startDate": "20261101", "endDate": "20261106"}, rows=2)
     assert res.params == {"searchDate": "20261106"} and res.status == "empty" and "--deep" in res.hint
+    assert res.columns == []
     deep = deep_check(client, spec, res.params, today=TODAY)
     assert deep["latest_date"] == "2026-11-04" and deep["window"] == {"searchDate": "20261104"}
     assert deep["window_total"] == 4 and deep["filters"]["observatoryName"]["works"] is True
+    # 정밀 점검 반복은 기본 점검이 0건이던 API 의 응답 컬럼·예시를 최근 구간 응답으로 채운다
+    from jeju_agent.datahub.apicheck import format_report, run_deep_checks
+
+    assert run_deep_checks(client, [res], [spec], pause=0) is False
+    assert res.columns[:2] == ["baseDate", "observatoryName"] and res.unknown_columns == [] and res.sample
+    assert "- 응답 컬럼 (가장 최근 데이터 구간 기준): baseDate, observatoryName" in format_report([res])
 
 
 def test_samples_follow_registry_columns():

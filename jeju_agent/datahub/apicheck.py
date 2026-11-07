@@ -205,6 +205,7 @@ def deep_check(
         p1 = page(window, 1, 2)
         p2 = page(window, 2, 2)
         out["meta"] = p1.meta
+        out["sample_rows"] = [{k: (None if v is None else str(v)[:80]) for k, v in row.items()} for row in p1.rows[:2]]
         window_total = p1.total
         out["window_total"] = window_total
         first_row = p1.rows[0] if p1.rows else {}
@@ -268,7 +269,8 @@ def format_report(results: list[ApiCheckResult], saved_path: str | Path | None =
         else:
             total = f"{r.total:,}건" if r.total is not None else "건수 알 수 없음"
             lines.append(f"- 상태: ✔ 성공 (전체 {total}{', 이번 조건에 데이터 없음' if r.status == 'empty' else ''})")
-            lines.append("- 응답 컬럼: " + (", ".join(r.columns) or "(없음)"))
+            where = " (가장 최근 데이터 구간 기준)" if r.status == "empty" and r.columns else ""
+            lines.append("- 응답 컬럼" + where + ": " + (", ".join(r.columns) or "(없음)"))
             if r.unknown_columns:
                 lines.append("- 레지스트리에 없는 컬럼: " + ", ".join(r.unknown_columns))
             for i, row in enumerate(r.sample, 1):
@@ -337,9 +339,16 @@ def run_deep_checks(client: DataHubClient, results: list[ApiCheckResult], specs:
             if r.status not in ("ok", "empty"):
                 continue
             say(f"정밀 점검 중: No.{r.catalog_no} {r.name} …")
-            r.deep = deep_check(client, by_id[r.id], r.params, log=lambda m: say("  " + m), pause=pause)
+            spec = by_id[r.id]
+            r.deep = deep_check(client, spec, r.params, log=lambda m: say("  " + m), pause=pause)
             if r.status == "empty":
                 r.hint = ""  # 정밀 점검이 최근 날짜를 이미 찾았으므로 --deep 안내는 필요 없다
+                rows = r.deep.get("sample_rows") or []
+                if rows and not r.columns:  # 최근 날짜 구간의 응답으로 컬럼·예시를 보여 준다
+                    r.columns = list(dict.fromkeys(k for row in rows for k in row))
+                    known = {c.name for c in spec.columns} | set(spec.rename or {})
+                    r.unknown_columns = [c for c in r.columns if c not in known]
+                    r.sample = rows
     except KeyboardInterrupt:
         say("⚠️ 정밀 점검을 중단했습니다. 지금까지의 결과만 보여 줍니다.")
         return True
